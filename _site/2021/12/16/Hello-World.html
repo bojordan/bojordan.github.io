@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Hello world</title>
+    <link rel="stylesheet" href="/assets/css/styles.css">
+  </head>
+  <body>
+    <nav>
+    
+      <a href="/" >Home</a>
+    
+      <a href="/about.html" >About</a>
+    
+      <a href="/blog.html" >Blog</a>
+    
+</nav>
+    <h1>Hello world</h1>
+<p>16 Dec 2021 - </p>
+
+<p>I spare moments I’ve stumbling through getting a quick blogging solution, and - HELLO WORLD - I have one.</p>
+
+<p>GitHub is a wonderful resource, and I already use it. Further, <a href="https://docs.github.com/en/pages">GitHub Pages</a> is a wonderful <em>free</em> resource for all users of GitHub, both free and paid. Add the ability fork someone else’s getting-started work (of course this is a core tenent of what GitHub is), is amazing.</p>
+
+<h2 id="the-steps">The steps</h2>
+<ol>
+  <li>Get a GitHub account, if you don’t already have one.</li>
+  <li>Fork <a href="https://github.com/barryclark/jekyll-now">Barry Clark’s jekyll-now repo</a>.</li>
+  <li>Rename your fork’s repository to <code class="language-plaintext highlighter-rouge">&lt;yourgithubname&gt;.github.io</code>.</li>
+  <li>Done!</li>
+</ol>
+
+<!--more-->
+
+<p>What you end up with is a static site. This basically means there is no database needed to run things. GitHub provides Jekyll (the code that generates the static pages) as a service. All of my content are <a href="https://daringfireball.net/projects/markdown/">Markdown</a> text files, which are versioned with Git.</p>
+
+<p>If you are intersted in the same, please check out Barry Clark’s extremely helpful repo and explanations:</p>
+
+<ul>
+  <li><a href="https://github.com/barryclark/jekyll-now">https://github.com/barryclark/jekyll-now</a></li>
+  <li><a href="https://www.smashingmagazine.com/2014/08/build-blog-jekyll-github-pages/">https://www.smashingmagazine.com/2014/08/build-blog-jekyll-github-pages/</a></li>
+</ul>
+
+<h2 id="whats-next">What’s next?</h2>
+<ul>
+  <li><strong>Private repo</strong>: I don’t believe you can take a forked repo private, so may do a tiny amount of work to make this blog’s repo private. (Note, I believe GitHub Pages is only supported in private repos wih paid GitHub accounts.) I may prefer the repo to remain public.</li>
+  <li><strong>Style</strong>: I’d like to style things a little. I’ve already added an excerpt separator to the site’s <code class="language-plaintext highlighter-rouge">_config.yml</code>, but I haven’t bothered to look at themes.</li>
+  <li><strong>Custom domain</strong>: I am using a custom domain for this site. Getting this to work was mostly simple, but I had more hiccups than I expected.</li>
+  <li><strong>Run Jekyll locally</strong>: I need to run the site locally.</li>
+  <li><strong>Drafts</strong>: I need a drafts strategy, which is <a href="http://seanlaw.github.io/2015/03/14/jekyll-drafts/">probably this</a>.</li>
+</ul>
+
+<h2 id="whats-long-term">What’s long-term?</h2>
+<ul>
+  <li><strong>DasBlog Core</strong>: I have no interest in working on the Jekyll back-end of this solution. If I find things are limiting in any way (not likely), I’m interested in looking into a .NET-centric static site-generating solution like <a href="https://github.com/poppastring/dasblog-core">DasBlog Core</a>. <a href="https://www.hanselman.com/blog/migrating-this-blog-to-azure-its-done-now-the-work-begins">Scott Hanselman has a great post about his implementation.</a></li>
+</ul>
+
+  </body>
+</html>
