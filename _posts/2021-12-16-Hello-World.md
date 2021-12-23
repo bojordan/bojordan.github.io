@@ -12,8 +12,6 @@ In spare moments I've been looking for a quick blogging solution, and now I have
 1. Rename your fork's repository to `<yourgithubname>.github.io`.
 1. Done!
 
-<!--more-->
-
 What you end up with is a static site. This basically means there is no database needed to run things. GitHub provides [Jekyll](https://jekyllrb.com) (the code that generates the static pages) as a service. All of my content are [Markdown](https://daringfireball.net/projects/markdown/) text files, which are versioned with Git.
 
 If you are interested in the same, please check out Barry Clark's extremely helpful repo and explanations:
