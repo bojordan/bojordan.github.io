@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Hello World Again
+title: Hello world again
 ---
 
 In spare moments I've been looking for a quick blogging solution, and now I have one.
