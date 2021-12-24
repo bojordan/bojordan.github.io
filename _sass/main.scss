@@ -2,7 +2,7 @@ body {
     // background-color: #fff;
     // color: #222222;
     // GitHub dark
-    background-color: #22272e;
+    background-color: #282c34;
     color: #adbac3;
     margin: 0;
     padding: 0;
@@ -21,21 +21,22 @@ body {
     height: 120px;
     margin-bottom: -120px;
     // background-color: #bbb;
-    background-color: #2d333b;
+    background-color: #21252b;
     // border-top: 1px solid #999;
     // border-bottom: 1px solid #999;
-    border-bottom: 1px solid #3b4043;
+    // border-bottom: 1px solid #3b4043;
 }
 
 a, a:active, a:visited {
     // color: #b5190e;
-    color: #539af5;
+    color: #d19a66;
     text-decoration: none;
 }
 
 h1, h2, h3, h4, h5, h6 {
     // color: #000000;
-    color: #539af5;
+    // color: #98c379;
+    color: #61afef;
 }
 
 .printonly { display: none; }
@@ -59,26 +60,26 @@ h1, h2, h3, h4, h5, h6 {
 #masthead a,
 #masthead a:active,
 // #masthead a:visited { color: #b5190e; }
-#masthead a:visited { color: #539af5; text-decoration: none; }
+#masthead a:visited { color: #d19a66; text-decoration: none; }
 
 #masthead h1 a,
 #masthead h1 a:active,
 #masthead h1 a:visited {
     // color: rgb(54, 54, 54);
     // color: #539af5;
-    color: #9da7b3;
+    color: #61afef;
     text-decoration: none;
 }
 
 #masthead p { margin: 0; padding: 0; }
 // #masthead nav { display: block; margin: 0; padding: 1em 0; color: #5c3b1e; }
-#masthead nav { display: block; margin: 0; padding: 1em 0; color: #46954a; } 
+#masthead nav { display: block; margin: 0; padding: 1em 0; color: #61afef; } 
 
 .wrapper-footer {
     margin-top: 50px;
-    border-top: 1px solid #ddd;
-    border-bottom: 1px solid #ddd;
-    background-color: #eee;
+    border-top: 1px solid #21252b;
+    border-bottom: 1px solid #21252b;
+    background-color: #21252b;
 }
 
 /* Posts */
@@ -86,12 +87,14 @@ h1, h2, h3, h4, h5, h6 {
 article {
     display: block;
     line-height: 1.6;
-    margin-top: 3em;
+    margin-top: 2em;
+    margin-bottom: 3em;
 }
 
-article header { color: #7f8990; }
+article header { color: #adbac3; }
 article header p { margin: 0; }
-article header a { text-decoration: none; }
+article header a:active,
+article header a:visited { color: #61afef; }
 article header time { font-size: 0.8em; }
 
 /* Link posts */
@@ -115,10 +118,11 @@ article.link header h2 a:visited {
 
 footer {
     margin: 2em 0;
-    font-size: 13px;
+    font-size: .7em;
+    text-align: center;
 }
 
-    footer p { margin: 0.5em; }
+footer p { margin: 0.5em; }
 
 section#posts {
     position: relative;
