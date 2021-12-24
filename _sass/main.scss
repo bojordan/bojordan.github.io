@@ -1,11 +1,15 @@
 body {
-    background-color: #fff;
-    color: #222222;
+    // background-color: #fff;
+    // color: #222222;
+    // GitHub dark
+    background-color: #22272e;
+    color: #adbac3;
     margin: 0;
     padding: 0;
 
     font-family: 'Avenir Next', 'HelveticaNeue-Light', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 1.125em;
+    // font-size: 1.125em;
+    font-size: 1em;
 
     // border-top: 3px solid #292929;
     // border-bottom: 33px solid #292929;
@@ -14,19 +18,24 @@ body {
 }
 
 #mastheadbackground {
-    height: 136px;
-    margin-bottom: -136px;
-    background-color: #bbb;
-    border-top: 1px solid #999;
-    border-bottom: 1px solid #999;
+    height: 120px;
+    margin-bottom: -120px;
+    // background-color: #bbb;
+    background-color: #2d333b;
+    // border-top: 1px solid #999;
+    // border-bottom: 1px solid #999;
+    border-bottom: 1px solid #3b4043;
 }
 
 a, a:active, a:visited {
-    color: #b5190e;
+    // color: #b5190e;
+    color: #539af5;
+    text-decoration: none;
 }
 
 h1, h2, h3, h4, h5, h6 {
-    color: #000000;
+    // color: #000000;
+    color: #539af5;
 }
 
 .printonly { display: none; }
@@ -34,7 +43,9 @@ h1, h2, h3, h4, h5, h6 {
 /* Site title */
 #masthead {
     font-size: 0.9em;
-    color: #4e4a47;
+    // color: #4e4a47;
+    // color: #539AF5
+    color: #9da7b3;
 }
 
 #masthead h1 {
@@ -47,17 +58,21 @@ h1, h2, h3, h4, h5, h6 {
 
 #masthead a,
 #masthead a:active,
-#masthead a:visited { color: #b5190e; }
+// #masthead a:visited { color: #b5190e; }
+#masthead a:visited { color: #539af5; text-decoration: none; }
 
 #masthead h1 a,
 #masthead h1 a:active,
 #masthead h1 a:visited {
-    color: rgb(54, 54, 54);
+    // color: rgb(54, 54, 54);
+    // color: #539af5;
+    color: #9da7b3;
     text-decoration: none;
 }
 
 #masthead p { margin: 0; padding: 0; }
-#masthead nav { display: block; margin: 0; padding: 1em 0; color: #5c3b1e; }
+// #masthead nav { display: block; margin: 0; padding: 1em 0; color: #5c3b1e; }
+#masthead nav { display: block; margin: 0; padding: 1em 0; color: #46954a; } 
 
 .wrapper-footer {
     margin-top: 50px;
@@ -74,7 +89,7 @@ article {
     margin-top: 3em;
 }
 
-article header { color: #888; }
+article header { color: #7f8990; }
 article header p { margin: 0; }
 article header a { text-decoration: none; }
 article header time { font-size: 0.8em; }
@@ -123,7 +138,8 @@ h2 {
 h2 a,
 h2 a:active,
 h2 a:visited {
-    color: #000;
+    // color: #000;
+    color: #539af5;
     text-decoration: none;
 }
 
