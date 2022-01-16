@@ -7,7 +7,7 @@ title: KQL primer, simplified
 
 As prep for a learning presentation at work, I set out to turn a quick set of “primer” notes into a more thought-out blog post, and then hopefully a better presentation. Turns out, I quickly found a far better introduction to the language. This [docs.microsoft.com tutorial](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/tutorial?pivots=azuredataexplorer) is wonderful; it is simple and straightforward, and I used it for my talk.
 
-### Learning how to dig
+### Learn how to dig
 
 So, rather than specifically a technical introduction, what is it that I am trying to share about KQL? Kusto is such an amazingly performant system, that using it can actually be fun.
 
