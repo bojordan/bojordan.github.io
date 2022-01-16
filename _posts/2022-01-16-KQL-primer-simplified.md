@@ -9,9 +9,7 @@ As prep for a learning presentation at work on the topic of KQL, I set out to tu
 
 ### Learn how to dig
 
-So, rather than specifically a technical introduction, what is it that I am trying to share about KQL? Kusto is such an amazingly performant system, that using it can actually be fun.
-
-Wait - poring through telemetry can be fun?
+So, rather than specifically a technical introduction, what is it that I am trying to share about KQL? Kusto is such an amazingly performant system, that **using it can actually be fun**.
 
 What I want to convey in 15 minutes or less is how to discover what data you have, and how to conveniently dig. I have met a lot of engineers whose systems publish to a KQL system. They've had access to the data for years, and don’t know how to discover what’s there.
 
@@ -65,7 +63,6 @@ Learn the following concepts, as quickly as possible.
         ActiveValue = Active.Value,
         DeathsValue = Deaths.Value,
         RecoveredValue = Recovered.Value
-
     ```
 
 5. Remove columns you don't need.
@@ -74,20 +71,20 @@ Learn the following concepts, as quickly as possible.
     | project Id, ReportDate, ConfirmedValue, ActiveValue, DeathsValue, RecoveredValue
     ```
 
-6. Group results and run functions over the set
+6. Group results and run functions over the set:
 
     ```
     Covid19_Bing
     | where Id == "/US/North Carolina"
-    | extend ConfirmedValue = Confirmed.Value, ActiveValue = toint(Active.Value), DeathsValue = Deaths.Value, RecoveredValue = Recovered.Value
-    | project Id, ReportDate, ConfirmedValue, ActiveValue, DeathsValue, RecoveredValue
+    | extend ConfirmedValue = Confirmed.Value, ActiveValue = toint(Active.Value),
+        DeathsValue = Deaths.Value, RecoveredValue = Recovered.Value
+    | project Id, ReportDate, ConfirmedValue, ActiveValue,
+        DeathsValue, RecoveredValue
     | summarize count(), toint(avg(ActiveValue)) by bin(ReportDate, 31d)
     ```
 
-7. Get values out of JSON columns
+ Note, I'm assuming most queries will be using the sample data from the tutorial listed above, but my one criticism of the data from that tutorial is that it is not typical system telemetry. I'll give examples for the following when I find a good sample dataset to use.
+
+7. Get values out of JSON columns.
 
 8. Join against other records.
-
- Note, I'm assuming most queries will be using the sample data from the tutorial listed above, but my one criticism of the data from that tutorial is that it is not typical system telemetry.
- I'll describe this later
-

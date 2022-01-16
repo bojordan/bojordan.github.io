@@ -39,6 +39,10 @@ h1, h2, h3, h4, h5, h6 {
     color: #61afef;
 }
 
+h3, h4, h5, h6 {
+    color: #adbac3;
+}
+
 .printonly { display: none; }
 
 /* Site title */
@@ -209,7 +213,8 @@ sub { top: .5ex; }
 
 pre {
     font-size: 11px;
-    background-color: #eee;
+    // background-color: #eee;
+    background-color: #21252B;
     padding: 1em;
     overflow: auto;
 }
