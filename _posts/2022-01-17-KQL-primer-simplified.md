@@ -5,7 +5,7 @@ title: KQL primer, simplified
 
 ### A good official tutorial exists
 
-As prep for a learning presentation at work, I set out to turn a quick set of “primer” notes into a more thought-out blog post, and then hopefully a better presentation. Turns out, I quickly found a far better introduction to the language. This [docs.microsoft.com tutorial](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/tutorial?pivots=azuredataexplorer) is wonderful; it is simple and straightforward, and I used it for my talk.
+As prep for a learning presentation at work on the topic of KQL, I set out to turn a quick set of “primer” notes into a more thought-out blog post, and then hopefully a better presentation. Turns out, I quickly found a far better introduction to the language. This [docs.microsoft.com tutorial](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/tutorial?pivots=azuredataexplorer) is wonderful; it is simple and straightforward, and I used it for my talk.
 
 ### Learn how to dig
 
