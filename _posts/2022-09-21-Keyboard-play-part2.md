@@ -3,7 +3,7 @@ layout: post
 title: Keyboard play, part 2
 ---
 
-First, I tried the [Keychron Q1](https://www.keychron.com/products/keychron-q1). I got one with a knob, which I like to use to control volume on my Mac, and which I dislike since the knob is in a key-shaped hole in the top case. I use this keyboard with my Mac.
+First, I tried the [Keychron Q1](https://www.keychron.com/products/keychron-q1). I got one with a knob, which I like to use to control volume on my Mac, and which I dislike since the knob is in a key-shaped hole in the top case.
 
 When I am programming (especially on Windows), I find I'm a heavy user of Home/End keys, and I find the traditional tenkeyless 85% keyboard more comfortable. Enter the [Keychron Q3](https://www.keychron.com/products/keychron-q3-qmk-custom-mechanical-keyboard). No knob on this one.
 
