@@ -9,4 +9,4 @@ Building and customizing keyboards has become quite a popular hobby in the past 
 
 Enter hot-swappable (no soldering required) switches. With the right keyboard, I can now tinker with how the switches themselves feel and sound, without the trouble of soldering.
 
-This will be fun. 
+This will be fun.
