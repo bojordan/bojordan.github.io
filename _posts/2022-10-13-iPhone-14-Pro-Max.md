@@ -4,7 +4,7 @@ title: iPhone 14 Pro Max
 ---
 
 This is my year for an iPhone update, and I received the new phone yesterday. Upgrading from my iPhone 12 Pro Max was more straightforward than I feared, and definitely more seamless than last time. I used [Quick Start](https://support.apple.com/guide/iphone/turn-on-and-set-up-iphone-iph1fd7e482f/ios) to transfer, and things worked as expected... mostly.
-<!--more-->
+
 My service is with Verizon, and the new iPhone was purchased without any carrier affiliation. I was using the standard old-fashined SIM in the iPhone 12 Pro Max.
 
 1. Right before starting the process, I did a fresh iCloud back-up.
