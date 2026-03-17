@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 3: The Animation Loop - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; }
+  .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #333; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; background: #1a1a2e; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; }
+  .challenge ul { padding-left: 25px; }
+  .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; }
+  .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; }
+  li { margin: 5px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson02.html">← Lesson 2</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson04.html">Lesson 4 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 3:</span> The Animation Loop</h1>
+<p class="intro">
+  So far, our drawings have been still pictures. But games need <strong>movement</strong>!
+  In this lesson, you'll learn the secret behind all video game animation — the <strong>game loop</strong>. 🎬
+</p>
+
+<h2>How Animation Works</h2>
+<p>
+  Have you ever made a flip-book? You draw a slightly different picture on each page,
+  and when you flip through them fast, it looks like movement!
+</p>
+<p>
+  Games work the <strong>exact same way</strong>. The computer draws a picture
+  (called a <strong>frame</strong>), then erases it, makes tiny changes,
+  and draws it again — about <strong>60 times per second</strong>!
+</p>
+
+<div class="analogy">
+  Imagine a whiteboard. You draw a ball on the left side. Then you erase it, and draw it
+  a tiny bit to the right. Erase, draw, erase, draw — 60 times per second! To your eyes,
+  the ball looks like it's moving smoothly across the board.
+</div>
+
+<h2>The Game Loop</h2>
+<p>
+  The <strong>game loop</strong> is a function that runs over and over, forever.
+  Each time it runs, it does three things:
+</p>
+<ol>
+  <li><strong>Clear</strong> the screen (erase the old drawing)</li>
+  <li><strong>Update</strong> the game (move things, check rules)</li>
+  <li><strong>Draw</strong> everything in its new position</li>
+</ol>
+
+<pre><code>function gameLoop() {
+  // 1. Clear the screen
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 2. Update (move things)
+  ballX = ballX + 2;  // Move the ball 2 pixels to the right
+
+  // 3. Draw
+  ctx.fillStyle = 'red';
+  ctx.beginPath();
+  ctx.arc(ballX, ballY, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ask the browser to call gameLoop again on the next frame
+  requestAnimationFrame(gameLoop);
+}
+
+// Start the loop!
+gameLoop();</code></pre>
+
+<div class="concept">
+  <h3>🔄 requestAnimationFrame</h3>
+  <p>
+    <code>requestAnimationFrame(gameLoop)</code> tells the browser:
+    "When you're ready to draw the next frame (about 1/60th of a second from now),
+    please call my <code>gameLoop</code> function again."
+  </p>
+  <p>
+    This creates an endless loop: <code>gameLoop</code> calls <code>requestAnimationFrame</code>,
+    which calls <code>gameLoop</code> again, which calls <code>requestAnimationFrame</code> again...
+    forever! This is what keeps the game running.
+  </p>
+</div>
+
+<h2>See It In Action!</h2>
+<p>Here's a ball that bounces around the screen using our game loop:</p>
+
+<div class="game-box">
+  <canvas id="demo1" width="600" height="250"></canvas>
+  <p>A bouncing ball! It reverses direction when it hits a wall.</p>
+</div>
+
+<h2>How the Bouncing Works</h2>
+<p>The ball has a position (<code>x</code> and <code>y</code>) and a speed
+(<code>speedX</code> and <code>speedY</code>). Each frame, we add the speed to the position.
+When the ball hits a wall, we reverse its speed (multiply by -1):</p>
+
+<pre><code>let ballX = 100, ballY = 100;
+let speedX = 3, speedY = 2;
+
+function gameLoop() {
+  // Clear
+  ctx.clearRect(0, 0, 600, 250);
+
+  // Update - move the ball
+  ballX += speedX;
+  ballY += speedY;
+
+  // Bounce off walls
+  if (ballX &lt; 20 || ballX &gt; 580) speedX = speedX * -1;
+  if (ballY &lt; 20 || ballY &gt; 230) speedY = speedY * -1;
+
+  // Draw the ball
+  ctx.fillStyle = '#ff6b6b';
+  ctx.beginPath();
+  ctx.arc(ballX, ballY, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();</code></pre>
+
+<div class="concept">
+  <h3>📐 New Drawing Method: arc()</h3>
+  <p>
+    <code>ctx.arc(x, y, radius, startAngle, endAngle)</code> draws a circle!
+  </p>
+  <ul>
+    <li><code>x, y</code> — Center position of the circle</li>
+    <li><code>radius</code> — How big the circle is</li>
+    <li><code>0, Math.PI * 2</code> — Draws a full circle (from 0 to 360 degrees)</li>
+  </ul>
+  <p>
+    We use <code>ctx.beginPath()</code> before the arc and <code>ctx.fill()</code> after to actually draw it.
+  </p>
+</div>
+
+<h2>Making Multiple Things Move</h2>
+<p>
+  Let's make something that looks more like a game — a moving character with a
+  scrolling background! We can have a character walking across a scene with blocks:
+</p>
+
+<div class="game-box">
+  <canvas id="demo2" width="600" height="250"></canvas>
+  <p>A character walking across a block landscape! (It loops around)</p>
+</div>
+
+<pre><code>let characterX = 0;
+
+function gameLoop() {
+  ctx.clearRect(0, 0, 600, 250);
+
+  // Sky
+  ctx.fillStyle = '#87ceeb';
+  ctx.fillRect(0, 0, 600, 250);
+
+  // Move the character to the right
+  characterX += 1.5;
+  if (characterX &gt; 620) characterX = -30;  // Loop around
+
+  // Draw ground blocks
+  for (let x = 0; x &lt; 600; x += 32) {
+    drawBlock(x, 192, 'grass');
+    drawBlock(x, 224, 'dirt');
+  }
+
+  // Draw the character at its current position
+  drawPlayer(characterX, 136);
+
+  requestAnimationFrame(gameLoop);
+}</code></pre>
+
+<div class="tip">
+  <strong>💡 The Clear Step is Important!</strong> Try removing the
+  <code>ctx.clearRect()</code> line in your own code. You'll see the old drawings
+  pile up because we never erase them. Always clear first!
+</div>
+
+<h2>Keeping Track of Time</h2>
+<p>
+  Sometimes we want to know exactly how fast our game is running.
+  The number of frames drawn per second is called <strong>FPS</strong>
+  (Frames Per Second). Most games aim for 60 FPS — that's 60 drawings every second!
+</p>
+
+<pre><code>let lastTime = 0;
+let fps = 0;
+
+function gameLoop(currentTime) {
+  // Calculate FPS
+  fps = Math.round(1000 / (currentTime - lastTime));
+  lastTime = currentTime;
+
+  // ... rest of game loop ...
+
+  // Show FPS on screen
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px Consolas';
+  ctx.fillText('FPS: ' + fps, 10, 20);
+
+  requestAnimationFrame(gameLoop);
+}</code></pre>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Change the ball's speed — what happens if you make <code>speedX = 8</code>?</li>
+    <li>Add a <em>second</em> ball with different speeds and colors</li>
+    <li>Make the character move in the opposite direction (hint: use <code>-1.5</code> instead of <code>1.5</code>)</li>
+    <li>Try making the ball leave a trail — remove the <code>clearRect</code> and see what happens!</li>
+    <li>Can you make the ball change color each time it bounces? (hint: change <code>fillStyle</code> when speed reverses)</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li>Animation = drawing, erasing, changing, drawing again — 60 times per second</li>
+    <li>The <strong>game loop</strong> is a function that repeats forever</li>
+    <li><code>requestAnimationFrame</code> tells the browser to call our function again</li>
+    <li><code>clearRect</code> erases the canvas before each new frame</li>
+    <li>We move things by changing their position variables a little each frame</li>
+    <li>Bouncing = reversing speed when hitting a boundary</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson02.html">← Lesson 2: Colors &amp; Shapes</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson04.html">Lesson 4: Keyboard Controls →</a>
+</div>
+
+</div>
+
+<script>
+// Demo 1: Bouncing ball
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  let bx = 100, by = 80, sx = 3.5, sy = 2.3;
+  let trail = [];
+
+  function loop1() {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, 600, 250);
+
+    bx += sx; by += sy;
+    if (bx < 20 || bx > 580) sx *= -1;
+    if (by < 20 || by > 230) sy *= -1;
+
+    // Trail
+    trail.push({x: bx, y: by});
+    if (trail.length > 20) trail.shift();
+    trail.forEach((p, i) => {
+      ctx.fillStyle = `rgba(255,107,107,${i / trail.length * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 20 * (i / trail.length), 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.fillStyle = '#ff6b6b';
+    ctx.beginPath();
+    ctx.arc(bx, by, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ff9b9b';
+    ctx.beginPath();
+    ctx.arc(bx - 5, by - 5, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    requestAnimationFrame(loop1);
+  }
+  loop1();
+}
+
+// Demo 2: Walking character
+{
+  const c = document.getElementById('demo2');
+  const ctx = c.getContext('2d');
+  let cx = 0;
+
+  function drawBlock2(x, y, type) {
+    const s = 32;
+    if (type === 'grass') {
+      ctx.fillStyle = '#4a8f29'; ctx.fillRect(x, y, s, s);
+      ctx.fillStyle = '#5cb338'; ctx.fillRect(x, y, s, 6);
+    } else if (type === 'dirt') {
+      ctx.fillStyle = '#8b6914'; ctx.fillRect(x, y, s, s);
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.strokeRect(x, y, s, s);
+  }
+
+  function drawChar(x, y) {
+    const walk = Math.sin(Date.now() * 0.01) * 3;
+    ctx.fillStyle = '#c8a882'; ctx.fillRect(x + 4, y, 16, 16);
+    ctx.fillStyle = '#fff'; ctx.fillRect(x + 8, y + 5, 4, 4); ctx.fillRect(x + 14, y + 5, 4, 4);
+    ctx.fillStyle = '#222'; ctx.fillRect(x + 10, y + 6, 2, 3); ctx.fillRect(x + 16, y + 6, 2, 3);
+    ctx.fillStyle = '#4a2a0a'; ctx.fillRect(x + 3, y, 18, 5);
+    ctx.fillStyle = '#44aa88'; ctx.fillRect(x + 2, y + 18, 20, 18);
+    ctx.fillStyle = '#1a3a8a';
+    ctx.fillRect(x + 3, y + 36 + walk, 8, 20);
+    ctx.fillRect(x + 13, y + 36 - walk, 8, 20);
+  }
+
+  function loop2() {
+    ctx.fillStyle = '#87ceeb'; ctx.fillRect(0, 0, 600, 250);
+    cx += 1.5;
+    if (cx > 620) cx = -30;
+    for (let x = 0; x < 600; x += 32) {
+      drawBlock2(x, 192, 'grass');
+      drawBlock2(x, 224, 'dirt');
+    }
+    drawChar(cx, 136);
+    requestAnimationFrame(loop2);
+  }
+  loop2();
+}
+</script>
+</body>
+</html>

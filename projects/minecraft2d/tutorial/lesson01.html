@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 1: Hello, Canvas! - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; }
+  .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #333; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; background: #1a1a2e; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; }
+  .challenge ul { padding-left: 25px; }
+  .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; }
+  .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; }
+  li { margin: 5px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <span></span>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson02.html">Lesson 2 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 1:</span> Hello, Canvas!</h1>
+<p class="intro">
+  Every video game starts with a screen to draw on. In this lesson, you'll create your
+  very first web page and learn to draw shapes on it — just like the blocks in Minecraft! 🎨
+</p>
+
+<h2>What is HTML?</h2>
+<p>
+  HTML stands for <strong>HyperText Markup Language</strong>. It's the language used to
+  create web pages — yes, the same kind of pages you visit every day in your browser!
+</p>
+<p>
+  An HTML file is just a text file with special <strong>tags</strong> that tell the browser what to show.
+  Tags look like this: <code>&lt;tag&gt;stuff inside&lt;/tag&gt;</code>
+</p>
+
+<div class="analogy">
+  Think of HTML like a recipe. The tags are the instructions ("add a title", "put a picture here"),
+  and the browser is the chef that follows them to build the page you see.
+</div>
+
+<h2>Your First Web Page</h2>
+<p>Here's the simplest web page you can make. It has just three parts:</p>
+
+<pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;My Game&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;h1&gt;Hello, World!&lt;/h1&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+<div class="concept">
+  <h3>🏷️ Key Tags</h3>
+  <ul>
+    <li><code>&lt;html&gt;</code> — Wraps everything on the page</li>
+    <li><code>&lt;head&gt;</code> — Info about the page (like its title in the browser tab)</li>
+    <li><code>&lt;body&gt;</code> — Everything you actually see on the page</li>
+    <li><code>&lt;h1&gt;</code> — A big heading (like a chapter title)</li>
+  </ul>
+</div>
+
+<h2>The Canvas: Your Drawing Board</h2>
+<p>
+  To make a game, we need something to draw on. HTML gives us a special tag called
+  <code>&lt;canvas&gt;</code>. Think of it as a blank piece of paper that we can draw
+  shapes, colors, and pictures on using code!
+</p>
+
+<pre><code>&lt;canvas id="game" width="600" height="400"&gt;&lt;/canvas&gt;</code></pre>
+
+<p>
+  This creates a drawing area that is 600 pixels wide and 400 pixels tall.
+  The <code>id="game"</code> gives it a name so we can find it in our code.
+</p>
+
+<div class="analogy">
+  A pixel is a tiny colored dot on your screen. Your screen has millions of them!
+  A canvas that is 600×400 is made up of 240,000 tiny dots we can color in.
+</div>
+
+<h2>Drawing with JavaScript</h2>
+<p>
+  HTML creates the canvas, but we need <strong>JavaScript</strong> to actually draw on it.
+  JavaScript is a programming language that makes web pages interactive — it's the language
+  that powers almost every game you play in a browser!
+</p>
+<p>
+  We write JavaScript inside a <code>&lt;script&gt;</code> tag. Here's how we draw our first rectangle:
+</p>
+
+<pre><code>&lt;script&gt;
+  // Step 1: Find our canvas on the page
+  const canvas = document.getElementById('game');
+
+  // Step 2: Get the "drawing tools" (called the context)
+  const ctx = canvas.getContext('2d');
+
+  // Step 3: Pick a color
+  ctx.fillStyle = '#5cb85c';  // A nice green color
+
+  // Step 4: Draw a filled rectangle!
+  // fillRect(x, y, width, height)
+  ctx.fillRect(50, 50, 200, 100);
+&lt;/script&gt;</code></pre>
+
+<div class="concept">
+  <h3>📐 Understanding fillRect(x, y, width, height)</h3>
+  <ul>
+    <li><code>x</code> — How far from the left edge to start (in pixels)</li>
+    <li><code>y</code> — How far from the top edge to start (in pixels)</li>
+    <li><code>width</code> — How wide the rectangle is</li>
+    <li><code>height</code> — How tall the rectangle is</li>
+  </ul>
+  <p style="margin-top:10px;">
+    <strong>Important:</strong> On a canvas, the position (0, 0) is the <strong>top-left corner</strong>,
+    not the bottom-left! The y-axis goes <strong>down</strong>, not up. This is different
+    from math class!
+  </p>
+</div>
+
+<h2>See It In Action!</h2>
+<p>Here's what our code draws — a green rectangle on a dark background:</p>
+
+<div class="game-box">
+  <canvas id="demo1" width="600" height="200"></canvas>
+  <p>A green rectangle at position (50, 50)</p>
+</div>
+
+<h2>Let's Draw a Scene!</h2>
+<p>
+  We can draw multiple rectangles with different colors to make a simple scene.
+  Let's make a sky, some ground, and a sun:
+</p>
+
+<pre><code>// Sky (fill the whole canvas with light blue)
+ctx.fillStyle = '#87ceeb';
+ctx.fillRect(0, 0, 600, 400);
+
+// Ground (green along the bottom)
+ctx.fillStyle = '#5cb85c';
+ctx.fillRect(0, 300, 600, 100);
+
+// Dirt (brown under the grass)
+ctx.fillStyle = '#8b6914';
+ctx.fillRect(0, 320, 600, 80);
+
+// Sun (yellow square in the sky)
+ctx.fillStyle = '#ffdd00';
+ctx.fillRect(500, 40, 60, 60);</code></pre>
+
+<div class="game-box">
+  <canvas id="demo2" width="600" height="300"></canvas>
+  <p>A simple scene made entirely from rectangles!</p>
+</div>
+
+<div class="tip">
+  <strong>🎨 Color Codes:</strong> Colors like <code>'#87ceeb'</code> are called
+  <strong>hex colors</strong>. The 6 characters after the # represent how much Red, Green,
+  and Blue to mix together. You can also use color names like <code>'red'</code>,
+  <code>'blue'</code>, or <code>'green'</code>!
+</div>
+
+<h2>The Complete Code</h2>
+<p>Here's the full HTML file that creates our scene. You can copy this into a text file,
+save it as <code>game.html</code>, and open it in your browser!</p>
+
+<pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;title&gt;My First Canvas&lt;/title&gt;
+&lt;/head&gt;
+&lt;body style="background: #222; margin: 0;"&gt;
+  &lt;canvas id="game" width="600" height="400"&gt;&lt;/canvas&gt;
+
+  &lt;script&gt;
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // Sky
+    ctx.fillStyle = '#87ceeb';
+    ctx.fillRect(0, 0, 600, 400);
+
+    // Ground
+    ctx.fillStyle = '#5cb85c';
+    ctx.fillRect(0, 300, 600, 100);
+
+    // Dirt
+    ctx.fillStyle = '#8b6914';
+    ctx.fillRect(0, 320, 600, 80);
+
+    // Sun
+    ctx.fillStyle = '#ffdd00';
+    ctx.fillRect(500, 40, 60, 60);
+  &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Change the sky color to something different — try <code>'#ff6b6b'</code> for a sunset!</li>
+    <li>Add more rectangles to make clouds (white rectangles in the sky)</li>
+    <li>Draw a brown rectangle for a tree trunk, and a green one for leaves on top of it</li>
+    <li>Try making the ground higher or lower by changing the <code>y</code> position</li>
+    <li>Can you figure out how to draw a simple house? (hint: you'll need a rectangle for the walls and a smaller one for the door)</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li>HTML uses <strong>tags</strong> to structure a web page</li>
+    <li>The <code>&lt;canvas&gt;</code> tag gives us a drawing area</li>
+    <li>JavaScript code goes inside <code>&lt;script&gt;</code> tags</li>
+    <li>We use <code>ctx.fillStyle</code> to pick a color</li>
+    <li>We use <code>ctx.fillRect(x, y, width, height)</code> to draw rectangles</li>
+    <li>Position (0,0) is the top-left corner; y goes down</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <span></span>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson02.html">Lesson 2: Colors &amp; Shapes →</a>
+</div>
+
+</div>
+
+<script>
+// Demo 1: Simple green rectangle
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, 600, 200);
+  ctx.fillStyle = '#5cb85c';
+  ctx.fillRect(50, 50, 200, 100);
+  // Label
+  ctx.fillStyle = '#888';
+  ctx.font = '13px Consolas, monospace';
+  ctx.fillText('(50, 50)', 50, 42);
+  ctx.fillText('200 wide', 110, 110);
+  ctx.fillText('100 tall', 260, 105);
+}
+
+// Demo 2: Scene
+{
+  const c = document.getElementById('demo2');
+  const ctx = c.getContext('2d');
+  // Sky
+  ctx.fillStyle = '#87ceeb';
+  ctx.fillRect(0, 0, 600, 300);
+  // Sun
+  ctx.fillStyle = '#ffdd00';
+  ctx.fillRect(500, 30, 50, 50);
+  ctx.fillStyle = 'rgba(255,221,0,0.3)';
+  ctx.fillRect(490, 20, 70, 70);
+  // Clouds
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillRect(80, 50, 100, 30);
+  ctx.fillRect(100, 35, 60, 30);
+  ctx.fillRect(300, 70, 80, 25);
+  // Ground
+  ctx.fillStyle = '#5cb85c';
+  ctx.fillRect(0, 220, 600, 80);
+  // Dirt
+  ctx.fillStyle = '#8b6914';
+  ctx.fillRect(0, 240, 600, 60);
+  // Tree
+  ctx.fillStyle = '#6b4226';
+  ctx.fillRect(150, 160, 20, 60);
+  ctx.fillStyle = '#2d7a2d';
+  ctx.fillRect(130, 120, 60, 50);
+}
+</script>
+</body>
+</html>

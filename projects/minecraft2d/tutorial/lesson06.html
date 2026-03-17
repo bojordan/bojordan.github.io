@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 6: A World of Blocks - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; } .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #333; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; }
+  .challenge ul { padding-left: 25px; } .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; } .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; } li { margin: 5px 0; }
+  table { border-collapse: collapse; margin: 15px 0; }
+  th, td { border: 1px solid #444; padding: 8px 14px; text-align: left; }
+  th { background: #16213e; color: #5bc0de; }
+  .color-swatch { display: inline-block; width: 16px; height: 16px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson05.html">← Lesson 5</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson07.html">Lesson 7 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 6:</span> A World of Blocks</h1>
+<p class="intro">
+  Minecraft's world is made of blocks arranged in a grid. In this lesson, you'll learn
+  about <strong>arrays</strong> — one of the most powerful tools in programming —
+  and use them to build a real block world! 🧱
+</p>
+
+<h2>Arrays: Lists of Things</h2>
+<p>
+  An <strong>array</strong> is an ordered list. Instead of creating separate variables
+  for each item, you store them all in one place:
+</p>
+
+<pre><code>// Without arrays (messy!):
+let block0 = 'grass';
+let block1 = 'dirt';
+let block2 = 'stone';
+
+// With an array (clean!):
+let blocks = ['grass', 'dirt', 'stone'];
+
+// Access items by their position (called "index")
+// IMPORTANT: counting starts at 0, not 1!
+blocks[0]  // → 'grass'  (first item)
+blocks[1]  // → 'dirt'   (second item)
+blocks[2]  // → 'stone'  (third item)</code></pre>
+
+<div class="analogy">
+  Think of an array like a row of lockers. Each locker has a number (starting from 0),
+  and you can put something inside each one. You can check any locker by its number.
+</div>
+
+<h2>2D Arrays: A Grid</h2>
+<p>
+  A Minecraft world is a <strong>grid</strong> — it has rows and columns.
+  We can make a grid by putting arrays <em>inside</em> an array! This is called a
+  <strong>2D array</strong> (two-dimensional):
+</p>
+
+<pre><code>// Each number represents a block type:
+// 0 = air (empty), 1 = grass, 2 = dirt, 3 = stone
+
+const world = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // Row 0 (sky)
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // Row 1
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // Row 2
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // Row 3
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // Row 4
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // Row 5
+  [1, 1, 1, 0, 0, 1, 1, 1, 1, 1],  // Row 6 (grass surface)
+  [2, 2, 2, 0, 0, 2, 2, 2, 2, 2],  // Row 7 (dirt)
+  [3, 3, 3, 3, 3, 3, 3, 3, 3, 3],  // Row 8 (stone)
+  [3, 3, 3, 3, 3, 3, 3, 3, 3, 3],  // Row 9 (stone)
+];
+
+// Access a specific block:
+world[6][0]  // → 1 (grass) — row 6, column 0
+world[0][5]  // → 0 (air) — row 0, column 5</code></pre>
+
+<div class="concept">
+  <h3>📊 Reading the Grid</h3>
+  <p>To get a block at position (column, row), use: <code>world[row][column]</code></p>
+  <p>Think of it as: <strong>which row first</strong>, then <strong>which column in that row</strong>.</p>
+</div>
+
+<h2>Block Types</h2>
+<p>We use numbers to represent different block types. Here's our block type chart:</p>
+
+<table>
+  <tr><th>Number</th><th>Block</th><th>Color</th></tr>
+  <tr><td>0</td><td>Air (empty)</td><td><span class="color-swatch" style="background:#87ceeb;"></span>Nothing — we skip it</td></tr>
+  <tr><td>1</td><td>Grass</td><td><span class="color-swatch" style="background:#4a8f29;"></span>#4a8f29</td></tr>
+  <tr><td>2</td><td>Dirt</td><td><span class="color-swatch" style="background:#8b6914;"></span>#8b6914</td></tr>
+  <tr><td>3</td><td>Stone</td><td><span class="color-swatch" style="background:#808080;"></span>#808080</td></tr>
+  <tr><td>4</td><td>Wood</td><td><span class="color-swatch" style="background:#6b4226;"></span>#6b4226</td></tr>
+  <tr><td>5</td><td>Leaves</td><td><span class="color-swatch" style="background:#2d7a2d;"></span>#2d7a2d</td></tr>
+</table>
+
+<h2>Drawing the World with Loops</h2>
+<p>
+  We use a <code>for</code> loop inside another <code>for</code> loop
+  to go through every block in the grid. The outer loop goes through each row,
+  and the inner loop goes through each column:
+</p>
+
+<pre><code>const BLOCK_SIZE = 32;
+
+// Colors for each block type
+const COLORS = ['', '#4a8f29', '#8b6914', '#808080', '#6b4226', '#2d7a2d'];
+
+function drawWorld() {
+  for (let row = 0; row &lt; world.length; row++) {
+    for (let col = 0; col &lt; world[row].length; col++) {
+      const block = world[row][col];
+
+      if (block === 0) continue;  // Skip air blocks
+
+      // Calculate pixel position
+      const x = col * BLOCK_SIZE;
+      const y = row * BLOCK_SIZE;
+
+      // Draw the block
+      ctx.fillStyle = COLORS[block];
+      ctx.fillRect(x, y, BLOCK_SIZE, BLOCK_SIZE);
+
+      // Draw outline
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.strokeRect(x, y, BLOCK_SIZE, BLOCK_SIZE);
+    }
+  }
+}</code></pre>
+
+<div class="concept">
+  <h3>🔁 Nested Loops</h3>
+  <p>
+    A <strong>for loop</strong> repeats code a certain number of times.
+    When we put one loop inside another, it's called a <strong>nested loop</strong>.
+  </p>
+  <p>
+    The outer loop (rows) runs 10 times. For <em>each</em> of those 10 runs,
+    the inner loop (columns) runs 10 times. So the block-drawing code runs 10 × 10 = <strong>100 times</strong>!
+    That's how we draw the entire grid.
+  </p>
+  <p><code>continue</code> means "skip this one and move to the next" — we use it to skip air blocks.</p>
+</div>
+
+<h2>See It In Action!</h2>
+<p>Here's a world built from a 2D array. Notice the gap in the middle — those are air blocks!</p>
+
+<div class="game-box">
+  <canvas id="demo1" width="608" height="352"></canvas>
+  <p>A block world created from a 2D array! Each colored square is one block.</p>
+</div>
+
+<h2>Helper Functions: getBlock and setBlock</h2>
+<p>
+  To make our code cleaner, let's create two helper functions:
+</p>
+
+<pre><code>function getBlock(col, row) {
+  // Return air if outside the world boundaries
+  if (col &lt; 0 || col &gt;= WORLD_WIDTH) return 0;
+  if (row &lt; 0 || row &gt;= WORLD_HEIGHT) return 0;
+  return world[row][col];
+}
+
+function setBlock(col, row, blockType) {
+  if (col &lt; 0 || col &gt;= WORLD_WIDTH) return;
+  if (row &lt; 0 || row &gt;= WORLD_HEIGHT) return;
+  world[row][col] = blockType;
+}</code></pre>
+
+<div class="tip">
+  <strong>🛡️ Boundary Checking:</strong> We check if the position is inside the world
+  before reading or writing. Without this check, trying to access <code>world[-1][5]</code>
+  would crash our game! Always protect your code from going out of bounds.
+</div>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Edit the <code>world</code> array to make a different landscape — try making hills!</li>
+    <li>Add a new block type (number 4 = wood, 5 = leaves) and add a tree</li>
+    <li>Make the world bigger — add more rows and columns</li>
+    <li>Try <code>setBlock(5, 3, 1)</code> to place a grass block in the air — what does it look like?</li>
+    <li>Can you make a cave by putting 0s (air) inside the stone area?</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li><strong>Arrays</strong> are ordered lists: <code>[item0, item1, item2]</code></li>
+    <li><strong>2D arrays</strong> are arrays of arrays — perfect for grids!</li>
+    <li>Array indexes start at <strong>0</strong>, not 1</li>
+    <li><strong>For loops</strong> repeat code a set number of times</li>
+    <li><strong>Nested loops</strong> let us visit every cell in a grid</li>
+    <li>We use <strong>numbers</strong> to represent block types (0 = air, 1 = grass, etc.)</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson05.html">← Lesson 5: Gravity &amp; Jumping</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson07.html">Lesson 7: Collision Detection →</a>
+</div>
+
+</div>
+
+<script>
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  const S = 32;
+
+  const world = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0],
+    [1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [2,2,2,2,0,0,2,2,2,2,2,2,2,2,2,2,2,2,2],
+    [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+    [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3],
+    [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3],
+  ];
+
+  const COLORS = {
+    1:'#4a8f29', 2:'#8b6914', 3:'#808080', 4:'#6b4226', 5:'#2d7a2d'
+  };
+  const TOPS = { 1:'#5cb338' };
+
+  ctx.fillStyle = '#87ceeb';
+  ctx.fillRect(0, 0, 608, 352);
+
+  for (let r = 0; r < world.length; r++) {
+    for (let c2 = 0; c2 < world[r].length; c2++) {
+      const b = world[r][c2];
+      if (b === 0) continue;
+      const x = c2 * S, y = r * S;
+      ctx.fillStyle = COLORS[b] || '#888';
+      ctx.fillRect(x, y, S, S);
+      if (TOPS[b]) { ctx.fillStyle = TOPS[b]; ctx.fillRect(x, y, S, 6); }
+      // Wood grain
+      if (b === 4) {
+        ctx.strokeStyle = '#5a3520'; ctx.lineWidth = 1;
+        for (let i = 4; i < S; i += 6) { ctx.beginPath(); ctx.moveTo(x,y+i); ctx.lineTo(x+S,y+i); ctx.stroke(); }
+      }
+      // Leaf detail
+      if (b === 5) {
+        for (let i = 0; i < 6; i++) {
+          ctx.fillStyle = `rgba(20,${100+Math.random()*55},20,0.4)`;
+          ctx.fillRect(x+Math.random()*S, y+Math.random()*S, 4, 4);
+        }
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, S, S);
+    }
+  }
+
+  // Labels
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(130, 195, 70, 22);
+  ctx.fillStyle = '#ff6b6b';
+  ctx.font = 'bold 12px Consolas';
+  ctx.fillText('← A cave!', 135, 211);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(420, 70, 60, 22);
+  ctx.fillStyle = '#5cb85c';
+  ctx.fillText('A tree! →', 390, 86);
+}
+</script>
+</body>
+</html>

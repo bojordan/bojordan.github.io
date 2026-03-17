@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 5: Gravity &amp; Jumping - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; } .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #5cb85c; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; }
+  .challenge ul { padding-left: 25px; } .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; } .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; } li { margin: 5px 0; }
+  .key-display { display: inline-block; background: #333; border: 2px solid #555; border-radius: 6px; padding: 4px 12px; font-family: Consolas, monospace; margin: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson04.html">← Lesson 4</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson06.html">Lesson 6 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 5:</span> Gravity &amp; Jumping</h1>
+<p class="intro">
+  In real Minecraft, you fall down when there's nothing under you and you jump with the
+  spacebar. Let's make our game work the same way using <strong>physics</strong>! 🍎⬇️
+</p>
+
+<h2>What is Velocity?</h2>
+<p>
+  <strong>Velocity</strong> is just a fancy word for speed with a direction.
+  In our game, the player has a vertical velocity called <code>vy</code>:
+</p>
+<ul>
+  <li>When <code>vy</code> is <strong>positive</strong>, the player moves <strong>down</strong></li>
+  <li>When <code>vy</code> is <strong>negative</strong>, the player moves <strong>up</strong> (like jumping!)</li>
+  <li>When <code>vy</code> is <strong>0</strong>, the player isn't moving up or down</li>
+</ul>
+
+<pre><code>let playerY = 100;   // The player's vertical position
+let vy = 0;          // The player's vertical velocity (starts at 0)</code></pre>
+
+<h2>What is Gravity?</h2>
+<p>
+  Gravity is a force that pulls things downward. In our game, we simulate gravity by
+  adding a small number to <code>vy</code> every frame. This makes the velocity get
+  bigger and bigger (faster and faster downward) — just like real falling!
+</p>
+
+<pre><code>const GRAVITY = 0.5;  // How strong gravity is
+
+function gameLoop() {
+  // Gravity pulls the player down by increasing vy
+  vy = vy + GRAVITY;
+
+  // Move the player by their velocity
+  playerY = playerY + vy;
+
+  // ... draw everything ...
+}</code></pre>
+
+<div class="analogy">
+  Imagine dropping a ball. At first it falls slowly, then faster and faster.
+  That's because gravity keeps <em>adding</em> to its speed every moment.
+  Our code does the same thing — each frame, we add 0.5 to the downward speed.
+</div>
+
+<h2>The Ground: Stopping the Fall</h2>
+<p>
+  Without a ground, the player would fall forever! We need to check if the player
+  has reached the ground level, and if so, stop them:
+</p>
+
+<pre><code>const GROUND_Y = 280;  // Where the ground is
+
+// In the game loop:
+vy = vy + GRAVITY;
+playerY = playerY + vy;
+
+// Check if player hit the ground
+if (playerY &gt;= GROUND_Y) {
+  playerY = GROUND_Y;  // Snap to ground level
+  vy = 0;              // Stop falling
+  onGround = true;     // Remember we're on the ground
+}</code></pre>
+
+<h2>Jumping!</h2>
+<p>
+  Jumping is beautifully simple: when the player presses Space (and they're on the ground),
+  we set <code>vy</code> to a <strong>negative number</strong>. Since negative = up,
+  the player shoots upward! Gravity then naturally pulls them back down.
+</p>
+
+<pre><code>const JUMP_FORCE = -10;  // Negative = upward!
+
+// In the game loop:
+if (keys['Space'] &amp;&amp; onGround) {
+  vy = JUMP_FORCE;   // Launch upward!
+  onGround = false;  // We're in the air now
+}</code></pre>
+
+<div class="concept">
+  <h3>🎯 The Jump Cycle</h3>
+  <ol>
+    <li>Player presses Space → <code>vy</code> becomes <strong>-10</strong> (going up fast!)</li>
+    <li>Each frame, gravity adds 0.5 → <code>vy</code> becomes -9.5, -9, -8.5... (slowing down)</li>
+    <li>Eventually <code>vy</code> reaches 0 (the peak of the jump — momentarily weightless!)</li>
+    <li>Gravity keeps adding → <code>vy</code> becomes 0.5, 1, 1.5... (falling back down)</li>
+    <li>Player hits the ground → <code>vy = 0</code>, <code>onGround = true</code></li>
+  </ol>
+  <p>This creates a smooth, natural-looking arc — just like real jumping!</p>
+</div>
+
+<h2>Try It! Press Space to Jump, A/D to Move</h2>
+
+<div class="game-box">
+  <canvas id="demo1" width="600" height="350" tabindex="0"></canvas>
+  <p>⬆️ Click here first! <span class="key-display">A</span> <span class="key-display">D</span> to move, <span class="key-display">Space</span> to jump</p>
+</div>
+
+<h2>The Complete Physics Code</h2>
+<p>Here's everything put together. Notice how all the physics is just a few lines!</p>
+
+<pre><code>let playerX = 100, playerY = 100;
+let vy = 0;
+let onGround = false;
+const GRAVITY = 0.5;
+const JUMP_FORCE = -10;
+const MOVE_SPEED = 4;
+const GROUND_Y = 280;
+
+function gameLoop() {
+  // Clear the screen
+  ctx.clearRect(0, 0, 600, 350);
+
+  // --- Horizontal movement ---
+  if (keys['KeyA']) playerX -= MOVE_SPEED;
+  if (keys['KeyD']) playerX += MOVE_SPEED;
+
+  // --- Jumping ---
+  if (keys['Space'] &amp;&amp; onGround) {
+    vy = JUMP_FORCE;
+    onGround = false;
+  }
+
+  // --- Gravity ---
+  vy += GRAVITY;
+  playerY += vy;
+
+  // --- Ground collision ---
+  if (playerY &gt;= GROUND_Y) {
+    playerY = GROUND_Y;
+    vy = 0;
+    onGround = true;
+  }
+
+  // --- Boundaries ---
+  if (playerX &lt; 0) playerX = 0;
+  if (playerX &gt; 576) playerX = 576;
+
+  // Draw the scene...
+  drawPlayer(playerX, playerY);
+
+  requestAnimationFrame(gameLoop);
+}</code></pre>
+
+<div class="tip">
+  <strong>⚡ Why can't we jump in mid-air?</strong> Because we check
+  <code>keys['Space'] && onGround</code>. The <code>&&</code> means <strong>AND</strong> —
+  both conditions must be true. If <code>onGround</code> is false (we're in the air),
+  pressing Space does nothing. This prevents double-jumping!
+</div>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Change <code>GRAVITY</code> to <code>0.2</code> — what does it feel like? (Moon gravity!)</li>
+    <li>Change <code>JUMP_FORCE</code> to <code>-15</code> for a super jump!</li>
+    <li>What if you set <code>GRAVITY</code> to <code>-0.5</code>? (Upside-down world!)</li>
+    <li>Can you allow <strong>double-jumping</strong>? (Hint: count jumps instead of just true/false)</li>
+    <li>Add platforms at different heights for the player to jump between</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li><strong>Velocity</strong> (<code>vy</code>) is speed with direction — positive = down, negative = up</li>
+    <li><strong>Gravity</strong> constantly adds to velocity, making things fall faster and faster</li>
+    <li><strong>Jumping</strong> = setting velocity to a negative number (upward push)</li>
+    <li>Gravity naturally brings the player back down after jumping</li>
+    <li><code>&&</code> means <strong>AND</strong> — both conditions must be true</li>
+    <li>We check <code>onGround</code> to prevent jumping in mid-air</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson04.html">← Lesson 4: Keyboard Controls</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson06.html">Lesson 6: A World of Blocks →</a>
+</div>
+
+</div>
+
+<script>
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  let px = 284, py = 220, vy = 0, onGround = false, facing = 1;
+  const GRAVITY = 0.5, JUMP = -10, SPD = 4, GROUND = 280;
+  const keys = {};
+
+  document.addEventListener('keydown', e => {
+    if(['KeyA','KeyD','KeyW','Space','ArrowLeft','ArrowRight','ArrowUp'].includes(e.code)){
+      keys[e.code] = true; e.preventDefault();
+    }
+  });
+  document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+  function drawBlock(x, y, type) {
+    const s = 32;
+    if (type==='grass'){ctx.fillStyle='#4a8f29';ctx.fillRect(x,y,s,s);ctx.fillStyle='#5cb338';ctx.fillRect(x,y,s,6);}
+    else if(type==='dirt'){ctx.fillStyle='#8b6914';ctx.fillRect(x,y,s,s);}
+    else if(type==='stone'){ctx.fillStyle='#808080';ctx.fillRect(x,y,s,s);}
+    ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.strokeRect(x,y,s,s);
+  }
+
+  function drawPlayer(x, y) {
+    ctx.save();
+    if(facing===-1){ctx.translate(x+12,0);ctx.scale(-1,1);ctx.translate(-(x+12),0);}
+    const w=(keys['KeyA']||keys['KeyD']||keys['ArrowLeft']||keys['ArrowRight'])?Math.sin(Date.now()*0.012)*3:0;
+    ctx.fillStyle='#c8a882';ctx.fillRect(x+4,y,16,16);
+    ctx.fillStyle='#fff';ctx.fillRect(x+8,y+5,4,4);ctx.fillRect(x+14,y+5,4,4);
+    ctx.fillStyle='#222';ctx.fillRect(x+10,y+6,2,3);ctx.fillRect(x+16,y+6,2,3);
+    ctx.fillStyle='#4a2a0a';ctx.fillRect(x+3,y,18,5);
+    ctx.fillStyle='#44aa88';ctx.fillRect(x+2,y+18,20,18);
+    ctx.fillStyle='#1a3a8a';
+    ctx.fillRect(x+3,y+36+w,8,20);ctx.fillRect(x+13,y+36-w,8,20);
+    ctx.restore();
+  }
+
+  // Platforms for extra fun
+  const platforms = [
+    {x:100,y:256,w:96},{x:300,y:224,w:96},{x:480,y:192,w:96}
+  ];
+
+  function loop() {
+    ctx.fillStyle='#87ceeb';ctx.fillRect(0,0,600,350);
+
+    // Ground
+    for(let x=0;x<600;x+=32){drawBlock(x,GROUND+56-32,'grass');drawBlock(x,GROUND+56,'dirt');}
+
+    // Platforms
+    platforms.forEach(p=>{
+      for(let x=p.x;x<p.x+p.w;x+=32)drawBlock(x,p.y,'stone');
+    });
+
+    // Movement
+    if(keys['KeyA']||keys['ArrowLeft']){px-=SPD;facing=-1;}
+    if(keys['KeyD']||keys['ArrowRight']){px+=SPD;facing=1;}
+    if((keys['Space']||keys['KeyW']||keys['ArrowUp'])&&onGround){vy=JUMP;onGround=false;}
+
+    // Physics
+    vy+=GRAVITY;
+    py+=vy;
+
+    // Ground
+    if(py>=GROUND){py=GROUND;vy=0;onGround=true;}
+
+    // Platform collision
+    platforms.forEach(p=>{
+      if(vy>=0 && px+20>p.x && px+4<p.x+p.w && py+56>=p.y && py+56<=p.y+16){
+        py=p.y-56;vy=0;onGround=true;
+      }
+    });
+
+    if(px<0)px=0;if(px>576)px=576;
+
+    drawPlayer(px,py);
+
+    // HUD
+    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(8,8,220,50);
+    ctx.fillStyle='#fff';ctx.font='12px Consolas';
+    ctx.fillText('A/D = Move, Space = Jump',15,25);
+    ctx.fillText('Velocity: '+vy.toFixed(1)+'  onGround: '+onGround,15,45);
+
+    requestAnimationFrame(loop);
+  }
+  c.focus();
+  loop();
+}
+</script>
+</body>
+</html>

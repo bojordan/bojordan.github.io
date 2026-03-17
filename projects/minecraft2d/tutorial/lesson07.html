@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 7: Collision Detection - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; } .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #5cb85c; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; } .challenge ul { padding-left: 25px; } .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; } .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; } li { margin: 5px 0; }
+  .key-display { display: inline-block; background: #333; border: 2px solid #555; border-radius: 6px; padding: 4px 12px; font-family: Consolas, monospace; margin: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson06.html">← Lesson 6</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson08.html">Lesson 8 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 7:</span> Collision Detection</h1>
+<p class="intro">
+  In Lesson 5, the player fell to a fixed "ground level." But in Minecraft, the ground
+  is made of <strong>blocks</strong> at different heights! We need to check if the player
+  is bumping into blocks — this is called <strong>collision detection</strong>. 🧱🚫
+</p>
+
+<h2>The Big Idea</h2>
+<p>
+  Every frame, before we move the player, we ask: "If I move to this new position,
+  will I be <strong>overlapping</strong> with any solid block?" If yes, we don't allow
+  the move. If no, we move freely.
+</p>
+
+<div class="analogy">
+  Imagine you're walking through a room. Before each step, you check:
+  "Is there a wall where I'm about to step?" If yes, you stop.
+  If no, you take the step. That's collision detection!
+</div>
+
+<h2>Which Block is the Player Touching?</h2>
+<p>
+  The player's position is in <strong>pixels</strong>, but our world is a grid of
+  <strong>blocks</strong>. To convert from pixels to block coordinates, we divide by the block size:
+</p>
+
+<pre><code>const BLOCK_SIZE = 32;
+
+// Convert pixel position to block position
+let blockCol = Math.floor(playerX / BLOCK_SIZE);
+let blockRow = Math.floor(playerY / BLOCK_SIZE);
+
+// Now we can check what block is at that position!
+let blockType = world[blockRow][blockCol];</code></pre>
+
+<div class="concept">
+  <h3>📐 Math.floor()</h3>
+  <p>
+    <code>Math.floor()</code> rounds a number <strong>down</strong> to the nearest
+    whole number. If the player is at pixel 75, <code>Math.floor(75 / 32)</code>
+    gives us 2 — meaning the player is in block column 2. This is how we translate
+    between the smooth pixel world and the blocky grid world!
+  </p>
+</div>
+
+<h2>Checking for Solid Blocks</h2>
+<p>
+  The player isn't just a single point — they have width and height!
+  We need to check ALL the blocks that the player's body overlaps with:
+</p>
+
+<pre><code>function isSolid(col, row) {
+  const block = getBlock(col, row);
+  return block !== 0;  // Anything that isn't air is solid
+}
+
+function collidesWithWorld(px, py, pw, ph) {
+  // Find which blocks the player overlaps
+  const leftCol   = Math.floor(px / BLOCK_SIZE);
+  const rightCol  = Math.floor((px + pw - 1) / BLOCK_SIZE);
+  const topRow    = Math.floor(py / BLOCK_SIZE);
+  const bottomRow = Math.floor((py + ph - 1) / BLOCK_SIZE);
+
+  // Check each overlapped block
+  for (let col = leftCol; col &lt;= rightCol; col++) {
+    for (let row = topRow; row &lt;= bottomRow; row++) {
+      if (isSolid(col, row)) return true;  // Hit something!
+    }
+  }
+  return false;  // Nothing in the way
+}</code></pre>
+
+<h2>Moving With Collision</h2>
+<p>
+  The trick is to check collision <strong>before</strong> actually moving the player.
+  We try the new position — if it would overlap with a block, we don't move there.
+  We handle X and Y <strong>separately</strong> so the player can slide along walls:
+</p>
+
+<pre><code>// --- Horizontal Movement ---
+let newX = playerX;
+if (keys['KeyA']) newX -= SPEED;
+if (keys['KeyD']) newX += SPEED;
+
+// Only move if the new position doesn't collide
+if (!collidesWithWorld(newX, playerY, playerW, playerH)) {
+  playerX = newX;  // Safe to move!
+}
+
+// --- Vertical Movement (gravity) ---
+vy += GRAVITY;
+let newY = playerY + vy;
+
+if (!collidesWithWorld(playerX, newY, playerW, playerH)) {
+  playerY = newY;  // Safe to fall/rise
+  onGround = false;
+} else {
+  // We hit something!
+  if (vy &gt; 0) {
+    // We were falling — snap to top of the block we hit
+    playerY = Math.floor((playerY + playerH + vy) / BLOCK_SIZE) * BLOCK_SIZE - playerH;
+    onGround = true;
+  }
+  vy = 0;  // Stop vertical movement
+}</code></pre>
+
+<div class="tip">
+  <strong>🔑 Key Insight:</strong> We move X and Y <strong>separately</strong>.
+  If moving right would hit a wall, we cancel the X movement but still let Y happen
+  (so the player can fall). If falling would hit the ground, we cancel Y movement
+  but still let X happen (so the player can walk). This gives smooth movement!
+</div>
+
+<h2>Try It! Walk Around the Block World</h2>
+<div class="game-box">
+  <canvas id="demo1" width="608" height="352" tabindex="0"></canvas>
+  <p>⬆️ Click here first!
+    <span class="key-display">A</span> <span class="key-display">D</span> to move,
+    <span class="key-display">Space</span> to jump.
+    The player now collides with blocks!
+  </p>
+</div>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Edit the world array in the code to add higher hills — can the player climb them?</li>
+    <li>Add blocks floating in the air — can the player jump onto them?</li>
+    <li>What happens if you remove the horizontal collision check? Try it!</li>
+    <li>Can you make a block type that isn't solid (like water)? Hint: make <code>isSolid</code> return false for that type</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li><strong>Collision detection</strong> checks if the player would overlap with solid blocks</li>
+    <li>We convert pixel positions to block positions with <code>Math.floor(px / BLOCK_SIZE)</code></li>
+    <li>We check <strong>all blocks</strong> the player's body overlaps — not just one point</li>
+    <li>We handle <strong>X and Y separately</strong> for smooth sliding movement</li>
+    <li>When the player hits the ground, we snap them to the block surface</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson06.html">← Lesson 6: A World of Blocks</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson08.html">Lesson 8: Scrolling Camera →</a>
+</div>
+
+</div>
+
+<script>
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  const S = 32, COLS = 19, ROWS = 11;
+  const GRAVITY = 0.5, JUMP = -9.5, SPD = 3.5;
+  const PW = 20, PH = 48;
+
+  const world = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,0],
+    [0,0,0,0,0,0,0,0,0,3,3,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1],
+    [2,2,2,2,2,0,0,2,2,2,2,2,2,2,2,2,2,2,2],
+    [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3],
+    [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3],
+  ];
+
+  const COLORS = {0:null,1:'#4a8f29',2:'#8b6914',3:'#808080'};
+  const TOPS = {1:'#5cb338'};
+
+  function getBlock(col,row){
+    if(col<0||col>=COLS||row<0||row>=ROWS)return 0;
+    return world[row][col];
+  }
+  function isSolid(col,row){ return getBlock(col,row)!==0; }
+  function collides(px,py,pw,ph){
+    const c1=Math.floor(px/S),c2=Math.floor((px+pw-1)/S);
+    const r1=Math.floor(py/S),r2=Math.floor((py+ph-1)/S);
+    for(let c=c1;c<=c2;c++)for(let r=r1;r<=r2;r++)if(isSolid(c,r))return true;
+    return false;
+  }
+
+  let px=64,py=100,vy=0,onGround=false,facing=1;
+  const keys={};
+  document.addEventListener('keydown',e=>{
+    if(['KeyA','KeyD','Space','ArrowLeft','ArrowRight','ArrowUp'].includes(e.code)){keys[e.code]=true;e.preventDefault();}
+  });
+  document.addEventListener('keyup',e=>{keys[e.code]=false;});
+
+  function drawWorld2(){
+    ctx.fillStyle='#87ceeb';ctx.fillRect(0,0,608,352);
+    // Underground bg
+    for(let r=0;r<ROWS;r++)for(let cc=0;cc<COLS;cc++){
+      const b=world[r][cc];
+      if(b===0 && r>=7){ctx.fillStyle='rgba(50,40,30,0.3)';ctx.fillRect(cc*S,r*S,S,S);}
+      if(b===0)continue;
+      ctx.fillStyle=COLORS[b];ctx.fillRect(cc*S,r*S,S,S);
+      if(TOPS[b]){ctx.fillStyle=TOPS[b];ctx.fillRect(cc*S,r*S,S,6);}
+      ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.strokeRect(cc*S,r*S,S,S);
+    }
+  }
+
+  function drawPlayer2(x,y){
+    ctx.save();
+    if(facing===-1){ctx.translate(x+PW/2,0);ctx.scale(-1,1);ctx.translate(-(x+PW/2),0);}
+    const walk=(keys['KeyA']||keys['KeyD']||keys['ArrowLeft']||keys['ArrowRight'])&&onGround?Math.sin(Date.now()*0.012)*3:0;
+    ctx.fillStyle='#c8a882';ctx.fillRect(x+2,y,16,14);
+    ctx.fillStyle='#fff';ctx.fillRect(x+5,y+4,4,4);ctx.fillRect(x+11,y+4,4,4);
+    ctx.fillStyle='#222';ctx.fillRect(x+7,y+5,2,3);ctx.fillRect(x+13,y+5,2,3);
+    ctx.fillStyle='#4a2a0a';ctx.fillRect(x+1,y,18,4);
+    ctx.fillStyle='#44aa88';ctx.fillRect(x+1,y+15,18,16);
+    ctx.fillStyle='#1a3a8a';
+    ctx.fillRect(x+2,y+31+walk,7,17);ctx.fillRect(x+11,y+31-walk,7,17);
+    ctx.restore();
+  }
+
+  function loop(){
+    // Move X
+    let nx=px;
+    if(keys['KeyA']||keys['ArrowLeft']){nx-=SPD;facing=-1;}
+    if(keys['KeyD']||keys['ArrowRight']){nx+=SPD;facing=1;}
+    if(!collides(nx,py,PW,PH))px=nx;
+
+    // Jump
+    if((keys['Space']||keys['ArrowUp'])&&onGround){vy=JUMP;onGround=false;}
+
+    // Gravity + move Y
+    vy+=GRAVITY; if(vy>12)vy=12;
+    let ny=py+vy;
+    if(!collides(px,ny,PW,PH)){py=ny;onGround=false;}
+    else{
+      if(vy>0){py=Math.floor((py+PH+vy)/S)*S-PH;onGround=true;}
+      else{py=Math.ceil(py/S)*S;}
+      vy=0;
+    }
+    if(px<0)px=0;if(px>COLS*S-PW)px=COLS*S-PW;
+    if(py>ROWS*S){py=100;vy=0;px=64;}
+
+    drawWorld2();
+    drawPlayer2(px,py);
+
+    // HUD
+    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(8,8,260,28);
+    ctx.fillStyle='#fff';ctx.font='12px Consolas';
+    ctx.fillText('A/D = Move | Space = Jump | Try the platforms!',14,27);
+
+    requestAnimationFrame(loop);
+  }
+  c.focus();
+  loop();
+}
+</script>
+</body>
+</html>

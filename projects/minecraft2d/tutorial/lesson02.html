@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 2: Colors &amp; Shapes - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; }
+  .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #333; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; background: #1a1a2e; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; }
+  .challenge ul { padding-left: 25px; }
+  .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; }
+  .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; }
+  li { margin: 5px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson01.html">← Lesson 1</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson03.html">Lesson 3 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 2:</span> Colors &amp; Shapes</h1>
+<p class="intro">
+  In Minecraft, the player character is made from simple square shapes.
+  Today we'll learn about <strong>variables</strong> and <strong>functions</strong>,
+  and use them to draw our very own pixel-art character! 🧑‍🎨
+</p>
+
+<h2>Variables: Giving Names to Things</h2>
+<p>
+  A <strong>variable</strong> is like a labeled box where you store information.
+  You give the box a name, and put something inside it. Later, you can use the name
+  to get that thing back.
+</p>
+
+<pre><code>// Create a variable called "playerX" and store the number 100 in it
+let playerX = 100;
+
+// Create a variable called "playerY" and store 200 in it
+let playerY = 200;
+
+// Create a variable that won't change — use "const"
+const groundLevel = 300;</code></pre>
+
+<div class="concept">
+  <h3>📦 let vs const</h3>
+  <ul>
+    <li><code>let</code> — Creates a variable that <strong>can change later</strong> (like a player's position)</li>
+    <li><code>const</code> — Creates a variable that <strong>stays the same forever</strong> (like the canvas size)</li>
+  </ul>
+</div>
+
+<div class="analogy">
+  Think of <code>let</code> like a whiteboard — you can erase and rewrite.
+  Think of <code>const</code> like a carved stone — once it's set, it stays!
+</div>
+
+<h2>Using Variables to Position Things</h2>
+<p>
+  Instead of typing numbers directly into <code>fillRect()</code>, we can use variables.
+  This makes it easy to move things around — just change the variable!
+</p>
+
+<pre><code>let playerX = 100;
+let playerY = 150;
+const playerWidth = 30;
+const playerHeight = 60;
+
+// Draw using variables instead of raw numbers
+ctx.fillStyle = '#4a8';
+ctx.fillRect(playerX, playerY, playerWidth, playerHeight);</code></pre>
+
+<h2>Functions: Reusable Instructions</h2>
+<p>
+  A <strong>function</strong> is a set of instructions that you give a name to.
+  Once you define a function, you can <strong>call</strong> it (run it) whenever you want,
+  as many times as you want!
+</p>
+
+<pre><code>// Define a function called "drawBlock"
+function drawBlock(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 32, 32);
+}
+
+// Now call it to draw blocks at different positions!
+drawBlock(0, 0, '#5cb85c');      // Green block at top-left
+drawBlock(32, 0, '#8b6914');     // Brown block next to it
+drawBlock(64, 0, '#808080');     // Gray block next to that</code></pre>
+
+<div class="concept">
+  <h3>🔧 Parts of a Function</h3>
+  <ul>
+    <li><code>function</code> — The keyword that says "I'm creating a function"</li>
+    <li><code>drawBlock</code> — The name you give it (you pick this!)</li>
+    <li><code>(x, y, color)</code> — <strong>Parameters</strong> — inputs the function needs to do its job</li>
+    <li><code>{ ... }</code> — The curly braces contain the instructions to run</li>
+  </ul>
+</div>
+
+<h2>Drawing a Character</h2>
+<p>
+  Now let's combine everything we've learned to draw a character!
+  Our character is built entirely from rectangles — just like pixel art:
+</p>
+
+<pre><code>function drawPlayer(x, y) {
+  // Head (skin color)
+  ctx.fillStyle = '#c8a882';
+  ctx.fillRect(x + 4, y, 16, 16);
+
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x + 8, y + 5, 4, 4);
+  ctx.fillRect(x + 14, y + 5, 4, 4);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(x + 10, y + 6, 2, 3);
+  ctx.fillRect(x + 16, y + 6, 2, 3);
+
+  // Hair
+  ctx.fillStyle = '#4a2a0a';
+  ctx.fillRect(x + 3, y, 18, 5);
+
+  // Body (green shirt)
+  ctx.fillStyle = '#44aa88';
+  ctx.fillRect(x + 2, y + 18, 20, 18);
+
+  // Legs (blue pants)
+  ctx.fillStyle = '#1a3a8a';
+  ctx.fillRect(x + 3, y + 36, 8, 20);
+  ctx.fillRect(x + 13, y + 36, 8, 20);
+}</code></pre>
+
+<p>Let's see what this looks like:</p>
+
+<div class="game-box">
+  <canvas id="demo1" width="600" height="300"></canvas>
+  <p>Our game character — built entirely from rectangles!</p>
+</div>
+
+<h2>Drawing Blocks</h2>
+<p>
+  In Minecraft, everything is made of blocks. Each block type has its own color.
+  Let's create a function that draws different kinds of blocks:
+</p>
+
+<pre><code>function drawBlock(x, y, type) {
+  const size = 32;
+
+  if (type === 'grass') {
+    ctx.fillStyle = '#4a8f29';      // Main green
+    ctx.fillRect(x, y, size, size);
+    ctx.fillStyle = '#5cb338';      // Lighter top
+    ctx.fillRect(x, y, size, 6);
+  }
+  else if (type === 'dirt') {
+    ctx.fillStyle = '#8b6914';
+    ctx.fillRect(x, y, size, size);
+  }
+  else if (type === 'stone') {
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(x, y, size, size);
+  }
+
+  // Add a subtle outline
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.strokeRect(x, y, size, size);
+}</code></pre>
+
+<div class="concept">
+  <h3>🔀 if / else if — Making Decisions</h3>
+  <p>
+    The <code>if</code> statement lets your code make decisions.
+    It checks if something is true, and runs different code depending on the answer.
+  </p>
+  <ul>
+    <li><code>===</code> means "is equal to" (we use three equals signs to check!)</li>
+    <li><code>if</code> — "If this is true, do this..."</li>
+    <li><code>else if</code> — "Otherwise, if THIS is true, do this instead..."</li>
+  </ul>
+</div>
+
+<div class="game-box">
+  <canvas id="demo2" width="600" height="250"></canvas>
+  <p>Different block types — grass, dirt, and stone — plus our character!</p>
+</div>
+
+<h2>Putting It All Together</h2>
+<p>Here's the complete code for this lesson. Try saving it as an HTML file and opening it!</p>
+
+<pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;&lt;title&gt;My Character&lt;/title&gt;&lt;/head&gt;
+&lt;body style="background: #222; margin: 0;"&gt;
+  &lt;canvas id="game" width="600" height="400"&gt;&lt;/canvas&gt;
+  &lt;script&gt;
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    function drawBlock(x, y, type) {
+      const size = 32;
+      if (type === 'grass') {
+        ctx.fillStyle = '#4a8f29';
+        ctx.fillRect(x, y, size, size);
+        ctx.fillStyle = '#5cb338';
+        ctx.fillRect(x, y, size, 6);
+      } else if (type === 'dirt') {
+        ctx.fillStyle = '#8b6914';
+        ctx.fillRect(x, y, size, size);
+      } else if (type === 'stone') {
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(x, y, size, size);
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.strokeRect(x, y, size, size);
+    }
+
+    function drawPlayer(x, y) {
+      ctx.fillStyle = '#c8a882';
+      ctx.fillRect(x + 4, y, 16, 16);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x + 8, y + 5, 4, 4);
+      ctx.fillRect(x + 14, y + 5, 4, 4);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(x + 10, y + 6, 2, 3);
+      ctx.fillRect(x + 16, y + 6, 2, 3);
+      ctx.fillStyle = '#4a2a0a';
+      ctx.fillRect(x + 3, y, 18, 5);
+      ctx.fillStyle = '#44aa88';
+      ctx.fillRect(x + 2, y + 18, 20, 18);
+      ctx.fillStyle = '#1a3a8a';
+      ctx.fillRect(x + 3, y + 36, 8, 20);
+      ctx.fillRect(x + 13, y + 36, 8, 20);
+    }
+
+    // Sky
+    ctx.fillStyle = '#87ceeb';
+    ctx.fillRect(0, 0, 600, 400);
+
+    // Draw ground blocks
+    for (let x = 0; x &lt; 600; x += 32) {
+      drawBlock(x, 288, 'grass');
+      drawBlock(x, 320, 'dirt');
+      drawBlock(x, 352, 'dirt');
+      drawBlock(x, 384, 'stone');
+    }
+
+    // Draw the player standing on the ground
+    drawPlayer(284, 232);
+  &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Add a new block type called <code>'sand'</code> with the color <code>'#dccc6e'</code></li>
+    <li>Give your character arms (small rectangles on the sides of the body)</li>
+    <li>Change the shirt color — try making it red or purple!</li>
+    <li>Draw a second character at a different position — try <code>drawPlayer(100, 232)</code></li>
+    <li>Can you add a "wood" block type with brown color for a tree trunk?</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li><strong>Variables</strong> store values we can use and change (<code>let</code> and <code>const</code>)</li>
+    <li><strong>Functions</strong> are reusable sets of instructions</li>
+    <li><strong>Parameters</strong> let us pass different values into functions</li>
+    <li><strong>if/else if</strong> lets code make decisions</li>
+    <li>We can build complex drawings from simple rectangles!</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson01.html">← Lesson 1: Hello, Canvas!</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson03.html">Lesson 3: Animation →</a>
+</div>
+
+</div>
+
+<script>
+// Demo 1: Character closeup
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#87ceeb';
+  ctx.fillRect(0, 0, 600, 300);
+  // ground
+  ctx.fillStyle = '#5cb85c';
+  ctx.fillRect(0, 230, 600, 70);
+  ctx.fillStyle = '#8b6914';
+  ctx.fillRect(0, 250, 600, 50);
+
+  function drawPlayer(x, y) {
+    ctx.fillStyle = '#c8a882';
+    ctx.fillRect(x + 4, y, 16, 16);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x + 8, y + 5, 4, 4);
+    ctx.fillRect(x + 14, y + 5, 4, 4);
+    ctx.fillStyle = '#222';
+    ctx.fillRect(x + 10, y + 6, 2, 3);
+    ctx.fillRect(x + 16, y + 6, 2, 3);
+    ctx.fillStyle = '#4a2a0a';
+    ctx.fillRect(x + 3, y, 18, 5);
+    ctx.fillStyle = '#44aa88';
+    ctx.fillRect(x + 2, y + 18, 20, 18);
+    ctx.fillStyle = '#1a3a8a';
+    ctx.fillRect(x + 3, y + 36, 8, 20);
+    ctx.fillRect(x + 13, y + 36, 8, 20);
+  }
+
+  // Draw big version for clarity
+  ctx.save();
+  ctx.translate(230, 20);
+  ctx.scale(3, 3);
+  drawPlayer(0, 0);
+  ctx.restore();
+
+  // Labels
+  ctx.fillStyle = '#fff';
+  ctx.font = '13px Consolas, monospace';
+  ctx.fillText('Head →', 320, 50);
+  ctx.fillText('Hair →', 320, 35);
+  ctx.fillText('Eyes →', 320, 75);
+  ctx.fillText('Body →', 320, 115);
+  ctx.fillText('Legs →', 320, 165);
+
+  // Also draw small version
+  drawPlayer(120, 174);
+  ctx.fillStyle = '#fff';
+  ctx.font = '12px Segoe UI, sans-serif';
+  ctx.fillText('Actual size →', 40, 200);
+}
+
+// Demo 2: Blocks + character
+{
+  const c = document.getElementById('demo2');
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#87ceeb';
+  ctx.fillRect(0, 0, 600, 250);
+
+  function drawBlock(x, y, type) {
+    const size = 32;
+    if (type === 'grass') {
+      ctx.fillStyle = '#4a8f29';
+      ctx.fillRect(x, y, size, size);
+      ctx.fillStyle = '#5cb338';
+      ctx.fillRect(x, y, size, 6);
+    } else if (type === 'dirt') {
+      ctx.fillStyle = '#8b6914';
+      ctx.fillRect(x, y, size, size);
+    } else if (type === 'stone') {
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(x, y, size, size);
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.strokeRect(x, y, size, size);
+  }
+
+  for (let x = 0; x < 600; x += 32) {
+    drawBlock(x, 160, 'grass');
+    drawBlock(x, 192, 'dirt');
+    drawBlock(x, 224, 'stone');
+  }
+
+  // Player
+  function drawPlayerSmall(x, y) {
+    ctx.fillStyle = '#c8a882';
+    ctx.fillRect(x + 4, y, 16, 16);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x + 8, y + 5, 4, 4);
+    ctx.fillRect(x + 14, y + 5, 4, 4);
+    ctx.fillStyle = '#222';
+    ctx.fillRect(x + 10, y + 6, 2, 3);
+    ctx.fillRect(x + 16, y + 6, 2, 3);
+    ctx.fillStyle = '#4a2a0a';
+    ctx.fillRect(x + 3, y, 18, 5);
+    ctx.fillStyle = '#44aa88';
+    ctx.fillRect(x + 2, y + 18, 20, 18);
+    ctx.fillStyle = '#1a3a8a';
+    ctx.fillRect(x + 3, y + 36, 8, 20);
+    ctx.fillRect(x + 13, y + 36, 8, 20);
+  }
+  drawPlayerSmall(284, 104);
+
+  // Labels
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('GRASS', 10, 180);
+  ctx.fillText('DIRT', 10, 212);
+  ctx.fillText('STONE', 10, 244);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Build Your Own 2D Minecraft! - Tutorial</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+  h1 { color: #5cb85c; font-size: 36px; margin-bottom: 5px; }
+  h1 span { color: #f0ad4e; }
+  .subtitle { color: #888; font-size: 18px; margin-bottom: 30px; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 20px; border-radius: 0 10px 10px 0; margin: 25px 0; }
+  .lessons { list-style: none; padding: 0; }
+  .lessons li { margin: 8px 0; }
+  .lessons a {
+    display: flex; align-items: center; gap: 15px;
+    padding: 18px 22px; background: #16213e; border-radius: 10px;
+    color: #e0e0e0; text-decoration: none; transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .lessons a:hover { background: #1a2744; border-color: #5cb85c; transform: translateX(5px); }
+  .lesson-number {
+    background: #5cb85c; color: #111; font-weight: bold;
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .lesson-title { font-weight: bold; font-size: 17px; color: #5bc0de; }
+  .lesson-desc { font-size: 13px; color: #999; margin-top: 3px; }
+  .section-label { color: #f0ad4e; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin: 35px 0 15px; font-weight: bold; }
+  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #333; color: #666; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⛏️ Build Your Own <span>2D Minecraft!</span></h1>
+  <p class="subtitle">A step-by-step coding tutorial for beginners</p>
+
+  <div class="intro">
+    <strong>Welcome, future game developer!</strong> 🎮<br><br>
+    In this tutorial, you'll learn how to build a 2D Minecraft-style game completely from scratch
+    using just HTML and JavaScript — the same languages used to build websites!
+    <br><br>
+    Each lesson teaches you one new idea and lets you see it working right away.
+    By the end, you'll have built a real game with a generated world, mining, building, inventory,
+    day/night cycles, and more!
+    <br><br>
+    <strong>What you need:</strong> Just a web browser (like Chrome or Edge) and a text editor (like Notepad or VS Code).
+    No downloads, no installs — let's go! 🚀
+  </div>
+
+  <p class="section-label">🎨 Part 1 — Drawing &amp; Animation</p>
+  <ul class="lessons">
+    <li><a href="lesson01.html">
+      <div class="lesson-number">1</div>
+      <div>
+        <div class="lesson-title">Hello, Canvas!</div>
+        <div class="lesson-desc">Create your first web page and draw on a digital canvas</div>
+      </div>
+    </a></li>
+    <li><a href="lesson02.html">
+      <div class="lesson-number">2</div>
+      <div>
+        <div class="lesson-title">Colors &amp; Shapes</div>
+        <div class="lesson-desc">Draw a game character out of colorful rectangles</div>
+      </div>
+    </a></li>
+    <li><a href="lesson03.html">
+      <div class="lesson-number">3</div>
+      <div>
+        <div class="lesson-title">The Animation Loop</div>
+        <div class="lesson-desc">Make things move with the magic of animation</div>
+      </div>
+    </a></li>
+  </ul>
+
+  <p class="section-label">🎮 Part 2 — Player Controls</p>
+  <ul class="lessons">
+    <li><a href="lesson04.html">
+      <div class="lesson-number">4</div>
+      <div>
+        <div class="lesson-title">Keyboard Controls</div>
+        <div class="lesson-desc">Move your character with the keyboard</div>
+      </div>
+    </a></li>
+    <li><a href="lesson05.html">
+      <div class="lesson-number">5</div>
+      <div>
+        <div class="lesson-title">Gravity &amp; Jumping</div>
+        <div class="lesson-desc">Add realistic physics — what goes up must come down!</div>
+      </div>
+    </a></li>
+  </ul>
+
+  <p class="section-label">🧱 Part 3 — Building the World</p>
+  <ul class="lessons">
+    <li><a href="lesson06.html">
+      <div class="lesson-number">6</div>
+      <div>
+        <div class="lesson-title">A World of Blocks</div>
+        <div class="lesson-desc">Use arrays to create a grid-based block world</div>
+      </div>
+    </a></li>
+    <li><a href="lesson07.html">
+      <div class="lesson-number">7</div>
+      <div>
+        <div class="lesson-title">Collision Detection</div>
+        <div class="lesson-desc">Stop the player from falling through the ground!</div>
+      </div>
+    </a></li>
+    <li><a href="lesson08.html">
+      <div class="lesson-number">8</div>
+      <div>
+        <div class="lesson-title">Scrolling Camera</div>
+        <div class="lesson-desc">Make a world bigger than the screen</div>
+      </div>
+    </a></li>
+  </ul>
+
+  <p class="section-label">⛏️ Part 4 — Gameplay</p>
+  <ul class="lessons">
+    <li><a href="lesson09.html">
+      <div class="lesson-number">9</div>
+      <div>
+        <div class="lesson-title">Breaking &amp; Placing Blocks</div>
+        <div class="lesson-desc">Use the mouse to mine and build</div>
+      </div>
+    </a></li>
+    <li><a href="lesson10.html">
+      <div class="lesson-number">10</div>
+      <div>
+        <div class="lesson-title">Inventory System</div>
+        <div class="lesson-desc">Collect items and choose what to place</div>
+      </div>
+    </a></li>
+  </ul>
+
+  <p class="section-label">🌍 Part 5 — The Complete Game</p>
+  <ul class="lessons">
+    <li><a href="lesson11.html">
+      <div class="lesson-number">11</div>
+      <div>
+        <div class="lesson-title">World Generation</div>
+        <div class="lesson-desc">Create infinite-feeling worlds with math</div>
+      </div>
+    </a></li>
+    <li><a href="lesson12.html">
+      <div class="lesson-number">12</div>
+      <div>
+        <div class="lesson-title">The Complete Game</div>
+        <div class="lesson-desc">Day/night, crafting, health — put it all together!</div>
+      </div>
+    </a></li>
+  </ul>
+
+  <div class="footer">
+    Made with ❤️ to help kids learn to code<br>
+    <a href="/projects/minecraft2d/" style="color:#5cb85c;">Play the finished game →</a>
+  </div>
+</div>
+</body>
+</html>

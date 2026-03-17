@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 4: Keyboard Controls - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; }
+  .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #5cb85c; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; cursor: none; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; background: #1a1a2e; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; }
+  .challenge ul { padding-left: 25px; }
+  .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; }
+  .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; }
+  li { margin: 5px 0; }
+  .key-display { display: inline-block; background: #333; border: 2px solid #555; border-radius: 6px; padding: 4px 12px; font-family: Consolas, monospace; margin: 2px; min-width: 35px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson03.html">← Lesson 3</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson05.html">Lesson 5 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 4:</span> Keyboard Controls</h1>
+<p class="intro">
+  A game isn't a game until you can control it! In this lesson, you'll learn how
+  to listen for keyboard presses and move your character with
+  <span class="key-display">W</span>
+  <span class="key-display">A</span>
+  <span class="key-display">S</span>
+  <span class="key-display">D</span> keys — just like in real Minecraft! 🎮
+</p>
+
+<h2>Events: The Browser Talking to Your Code</h2>
+<p>
+  When you press a key, click the mouse, or scroll the page, the browser creates an
+  <strong>event</strong>. An event is the browser's way of saying
+  <em>"Hey, something just happened!"</em>
+</p>
+<p>
+  We can tell the browser: "When a key is pressed, run this function."
+  This is called adding an <strong>event listener</strong>.
+</p>
+
+<pre><code>// When any key is pressed DOWN, run this function
+document.addEventListener('keydown', function(event) {
+  console.log('You pressed: ' + event.code);
+});</code></pre>
+
+<div class="concept">
+  <h3>🎧 addEventListener</h3>
+  <ul>
+    <li><code>'keydown'</code> — Fires when a key is pressed down</li>
+    <li><code>'keyup'</code> — Fires when a key is released</li>
+    <li><code>event.code</code> — Tells you WHICH key (like <code>'KeyA'</code>, <code>'KeyW'</code>, <code>'ArrowUp'</code>)</li>
+  </ul>
+</div>
+
+<h2>Why We Track Keys With an Object</h2>
+<p>
+  Here's a problem: if we only move the player inside the <code>keydown</code> event,
+  the player moves once, pauses, then starts repeating (like when you hold a key while typing).
+  That feels terrible in a game!
+</p>
+<p>
+  Instead, we use a clever trick: we keep track of which keys are <strong>currently held down</strong>
+  using an object, then check it in the game loop.
+</p>
+
+<pre><code>// An object to track which keys are currently pressed
+const keys = {};
+
+// When a key goes DOWN, remember it
+document.addEventListener('keydown', function(event) {
+  keys[event.code] = true;
+});
+
+// When a key comes UP, forget it
+document.addEventListener('keyup', function(event) {
+  keys[event.code] = false;
+});</code></pre>
+
+<div class="analogy">
+  Think of the <code>keys</code> object like a light switch panel.
+  When you press the "A" key, the "A" switch flips ON.
+  When you let go, it flips OFF. Our game loop checks the switches 60 times
+  per second to see which ones are on!
+</div>
+
+<h2>Moving the Player</h2>
+<p>Now in our game loop, we check which keys are held down and move the player:</p>
+
+<pre><code>const speed = 4;  // How fast the player moves (pixels per frame)
+
+function gameLoop() {
+  ctx.clearRect(0, 0, 600, 400);
+
+  // Check the keys and move the player
+  if (keys['KeyA'] || keys['ArrowLeft'])  playerX -= speed;  // Move left
+  if (keys['KeyD'] || keys['ArrowRight']) playerX += speed;  // Move right
+  if (keys['KeyW'] || keys['ArrowUp'])    playerY -= speed;  // Move up
+  if (keys['KeyS'] || keys['ArrowDown'])  playerY += speed;  // Move down
+
+  // Draw the player at the new position
+  drawPlayer(playerX, playerY);
+
+  requestAnimationFrame(gameLoop);
+}</code></pre>
+
+<div class="concept">
+  <h3>🔢 Objects: Like a Dictionary</h3>
+  <p>
+    An <strong>object</strong> in JavaScript is like a dictionary — it stores
+    pairs of <em>names</em> and <em>values</em>. We use <code>keys['KeyA']</code>
+    to look up whether the A key is pressed:
+  </p>
+  <ul>
+    <li><code>keys['KeyA'] = true</code> → "A is being held down"</li>
+    <li><code>keys['KeyA'] = false</code> → "A is not being pressed"</li>
+    <li>We use <code>||</code> which means <strong>OR</strong> — so both WASD and arrow keys work</li>
+  </ul>
+</div>
+
+<h2>Try It! Click the Game Below, Then Use WASD to Move</h2>
+
+<div class="game-box">
+  <canvas id="demo1" width="600" height="350" tabindex="0"></canvas>
+  <p>⬆️ Click here first, then use <span class="key-display">W</span> <span class="key-display">A</span> <span class="key-display">S</span> <span class="key-display">D</span> or Arrow Keys to move!</p>
+</div>
+
+<h2>Keeping the Player On Screen</h2>
+<p>
+  Right now, the player can walk right off the edge of the screen!
+  We need to add <strong>boundaries</strong> — limits that stop the player from going too far:
+</p>
+
+<pre><code>// Keep player inside the canvas
+if (playerX &lt; 0) playerX = 0;
+if (playerX &gt; canvas.width - 24) playerX = canvas.width - 24;
+if (playerY &lt; 0) playerY = 0;
+if (playerY &gt; canvas.height - 56) playerY = canvas.height - 56;</code></pre>
+
+<div class="tip">
+  <strong>Why <code>canvas.width - 24</code>?</strong> Because the player is 24 pixels
+  wide! If we just checked <code>playerX &gt; canvas.width</code>, the player's left edge
+  would stop at the right side, but the rest of the character would be off-screen.
+  We subtract the player's width so the <em>right edge</em> of the character stops at the boundary.
+</div>
+
+<h2>Adding Direction (Facing Left or Right)</h2>
+<p>
+  In Minecraft, your character faces the direction you're walking. We can track
+  which direction the player is facing and flip the drawing:
+</p>
+
+<pre><code>let facing = 1;  // 1 = right, -1 = left
+
+if (keys['KeyA'] || keys['ArrowLeft']) {
+  playerX -= speed;
+  facing = -1;  // Now facing left
+}
+if (keys['KeyD'] || keys['ArrowRight']) {
+  playerX += speed;
+  facing = 1;   // Now facing right
+}</code></pre>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Change the <code>speed</code> variable to make the player faster or slower</li>
+    <li>Add a speed boost: when the player holds <span class="key-display">Shift</span>, double the speed! (hint: check <code>keys['ShiftLeft']</code>)</li>
+    <li>Display the player's position on screen using <code>ctx.fillText('X: ' + playerX, 10, 20)</code></li>
+    <li>Make the ground blocks from Lesson 2 appear at the bottom of the screen</li>
+    <li>Add a second player controlled by <span class="key-display">I</span> <span class="key-display">J</span> <span class="key-display">K</span> <span class="key-display">L</span> keys!</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li><strong>Events</strong> are notifications from the browser (key presses, mouse clicks)</li>
+    <li><code>addEventListener</code> lets us run code when events happen</li>
+    <li>We track held keys in an <strong>object</strong> and check them in the game loop</li>
+    <li><code>||</code> means <strong>OR</strong> — either condition can be true</li>
+    <li>Boundaries keep the player on screen</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson03.html">← Lesson 3: Animation</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson05.html">Lesson 5: Gravity &amp; Jumping →</a>
+</div>
+
+</div>
+
+<script>
+// Demo: Movable character
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  let px = 284, py = 200, facing = 1;
+  const speed = 4;
+  const keys = {};
+
+  c.addEventListener('keydown', e => { keys[e.code] = true; e.preventDefault(); });
+  c.addEventListener('keyup', e => { keys[e.code] = false; });
+  // Also listen on document for better capture
+  document.addEventListener('keydown', e => {
+    if (['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
+      keys[e.code] = true;
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+  function drawBlock(x, y, type) {
+    const s = 32;
+    if (type === 'grass') { ctx.fillStyle = '#4a8f29'; ctx.fillRect(x,y,s,s); ctx.fillStyle = '#5cb338'; ctx.fillRect(x,y,s,6); }
+    else if (type === 'dirt') { ctx.fillStyle = '#8b6914'; ctx.fillRect(x,y,s,s); }
+    else if (type === 'stone') { ctx.fillStyle = '#808080'; ctx.fillRect(x,y,s,s); }
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.strokeRect(x,y,s,s);
+  }
+
+  function drawPlayer(x, y) {
+    ctx.save();
+    if (facing === -1) { ctx.translate(x + 12, 0); ctx.scale(-1, 1); ctx.translate(-(x + 12), 0); }
+    const walk = (keys['KeyA']||keys['KeyD']||keys['ArrowLeft']||keys['ArrowRight']) ? Math.sin(Date.now()*0.012)*3 : 0;
+    ctx.fillStyle = '#c8a882'; ctx.fillRect(x+4,y,16,16);
+    ctx.fillStyle = '#fff'; ctx.fillRect(x+8,y+5,4,4); ctx.fillRect(x+14,y+5,4,4);
+    ctx.fillStyle = '#222'; ctx.fillRect(x+10,y+6,2,3); ctx.fillRect(x+16,y+6,2,3);
+    ctx.fillStyle = '#4a2a0a'; ctx.fillRect(x+3,y,18,5);
+    ctx.fillStyle = '#44aa88'; ctx.fillRect(x+2,y+18,20,18);
+    ctx.fillStyle = '#1a3a8a';
+    ctx.fillRect(x+3,y+36+walk,8,20);
+    ctx.fillRect(x+13,y+36-walk,8,20);
+    ctx.restore();
+  }
+
+  function loop() {
+    ctx.fillStyle = '#87ceeb'; ctx.fillRect(0,0,600,350);
+    // Ground
+    for (let x = 0; x < 600; x += 32) {
+      drawBlock(x, 288, 'grass');
+      drawBlock(x, 320, 'dirt');
+    }
+    // Move
+    if (keys['KeyA']||keys['ArrowLeft']) { px -= speed; facing = -1; }
+    if (keys['KeyD']||keys['ArrowRight']) { px += speed; facing = 1; }
+    if (keys['KeyW']||keys['ArrowUp']) py -= speed;
+    if (keys['KeyS']||keys['ArrowDown']) py += speed;
+    // Boundaries
+    if (px < 0) px = 0; if (px > 576) px = 576;
+    if (py < 0) py = 0; if (py > 232) py = 232;
+
+    drawPlayer(px, py);
+
+    // Instructions overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(8, 8, 175, 28);
+    ctx.fillStyle = '#fff'; ctx.font = '13px Consolas';
+    ctx.fillText('WASD or Arrows to move!', 15, 27);
+    // Position
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(8, 42, 140, 22);
+    ctx.fillStyle = '#aaa'; ctx.font = '12px Consolas';
+    ctx.fillText('Position: '+Math.round(px)+', '+Math.round(py), 15, 58);
+
+    requestAnimationFrame(loop);
+  }
+  c.focus();
+  loop();
+}
+</script>
+</body>
+</html>

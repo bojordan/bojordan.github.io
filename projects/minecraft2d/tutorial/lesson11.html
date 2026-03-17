@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 11: World Generation - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; } .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #333; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; } .challenge ul { padding-left: 25px; } .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; } .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; } li { margin: 5px 0; }
+  button { background: #5cb85c; color: #111; border: none; padding: 10px 24px; border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: bold; margin: 5px; }
+  button:hover { background: #4cae4c; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson10.html">← Lesson 10</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson12.html">Lesson 12 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 11:</span> World Generation</h1>
+<p class="intro">
+  Until now, we've been hand-building our worlds. But real Minecraft generates entire
+  worlds <strong>automatically</strong> using math! In this lesson, you'll learn about
+  <strong>noise functions</strong> — the magical math that creates realistic terrain. 🌍✨
+</p>
+
+<h2>Random vs. Smooth Random</h2>
+<p>
+  JavaScript has <code>Math.random()</code>, which gives a random number between 0 and 1.
+  But if we used pure randomness for terrain, we'd get something ugly — blocks jumping
+  wildly up and down with no smooth hills.
+</p>
+
+<div class="game-box">
+  <canvas id="demo-random" width="600" height="150"></canvas>
+  <p>Pure random terrain — way too chaotic! 😵</p>
+</div>
+
+<p>
+  What we want is <strong>smooth randomness</strong> — random values that change
+  gradually, creating natural-looking hills and valleys. This is called <strong>noise</strong>.
+</p>
+
+<div class="game-box">
+  <canvas id="demo-noise" width="600" height="150"></canvas>
+  <p>Smooth noise terrain — now THAT looks like Minecraft! 🏔️</p>
+</div>
+
+<h2>How Noise Works (Simplified)</h2>
+<p>
+  A noise function takes a position and returns a smooth random value between -1 and 1.
+  Nearby positions get similar values, creating smooth transitions:
+</p>
+
+<pre><code>// Simple noise using sin waves at different scales
+function simpleNoise(x, seed) {
+  return Math.sin(x * 0.02 + seed) * 0.5
+       + Math.sin(x * 0.05 + seed * 2) * 0.3
+       + Math.sin(x * 0.1 + seed * 3) * 0.2;
+}</code></pre>
+
+<div class="analogy">
+  Imagine ocean waves. Big waves create the overall shape (hills),
+  medium waves add some bumps, and tiny ripples add fine detail.
+  Noise works the same way — we add waves at different sizes together!
+</div>
+
+<h2>Seeds: Repeatable Randomness</h2>
+<p>
+  A <strong>seed</strong> is a starting number that determines the entire world.
+  The same seed always creates the same world — that's how Minecraft lets you share
+  world seeds with friends!
+</p>
+
+<pre><code>const SEED = Math.floor(Math.random() * 999999);
+
+// This seed will always create the same terrain:
+// Seed 12345 → always the same hills, caves, trees
+// Seed 67890 → completely different, but also always the same</code></pre>
+
+<h2>Building Terrain with Noise</h2>
+<p>We use noise to calculate a <strong>height map</strong> — the surface height at each column:</p>
+
+<pre><code>function generateWorld() {
+  for (let col = 0; col &lt; WORLD_WIDTH; col++) {
+    // Use noise to get surface height
+    const surfaceRow = Math.floor(
+      60 + simpleNoise(col, SEED) * 15
+    );
+
+    for (let row = 0; row &lt; WORLD_HEIGHT; row++) {
+      if (row &lt; surfaceRow) {
+        setBlock(col, row, 0);         // Air above surface
+      } else if (row === surfaceRow) {
+        setBlock(col, row, 1);         // Grass at surface
+      } else if (row &lt; surfaceRow + 4) {
+        setBlock(col, row, 2);         // Dirt layer
+      } else {
+        setBlock(col, row, 3);         // Stone deep down
+      }
+    }
+  }
+}</code></pre>
+
+<h2>Adding Trees</h2>
+<pre><code>// After generating terrain, add trees
+for (let col = 3; col &lt; WORLD_WIDTH - 3; col++) {
+  // Use noise to decide where trees go (not every column!)
+  if (simpleNoise(col * 5, SEED + 100) &gt; 0.3) {
+    const surfaceRow = findSurface(col);  // Find the grass block
+    if (getBlock(col, surfaceRow) === 1) {  // Only on grass
+      // Trunk (3-5 blocks tall)
+      const height = 3 + Math.floor(Math.abs(simpleNoise(col * 7, SEED)) * 3);
+      for (let h = 1; h &lt;= height; h++) {
+        setBlock(col, surfaceRow - h, 4);  // Wood
+      }
+      // Leaves canopy
+      for (let lx = -2; lx &lt;= 2; lx++) {
+        for (let ly = -2; ly &lt;= 0; ly++) {
+          if (Math.abs(lx) + Math.abs(ly) &lt;= 2) {
+            setBlock(col + lx, surfaceRow - height + ly, 5);  // Leaves
+          }
+        }
+      }
+      col += 5;  // Space between trees
+    }
+  }
+}</code></pre>
+
+<h2>Adding Ores</h2>
+<p>Ores appear deep underground. Rarer ores appear deeper:</p>
+
+<pre><code>// Coal: appears below surface + 5
+// Iron: appears below surface + 15
+// Diamond: appears below surface + 30
+
+if (row &gt; surfaceRow + 5 &amp;&amp; noise(col * 0.5 + row * 0.7) &gt; 0.7) {
+  setBlock(col, row, COAL_ORE);
+}
+if (row &gt; surfaceRow + 15 &amp;&amp; noise(col * 0.5 + row * 0.7) &gt; 0.85) {
+  setBlock(col, row, IRON_ORE);
+}
+if (row &gt; surfaceRow + 30 &amp;&amp; noise(col * 0.5 + row * 0.7) &gt; 1.0) {
+  setBlock(col, row, DIAMOND_ORE);
+}</code></pre>
+
+<h2>Interactive Demo — Generate Worlds!</h2>
+<p>Click the button to generate a new world with a random seed:</p>
+
+<div class="game-box">
+  <canvas id="demo-world" width="600" height="300"></canvas>
+  <p>
+    <button onclick="generateNewWorld()">🌍 Generate New World</button>
+    Seed: <span id="seed-display">—</span>
+  </p>
+</div>
+
+<div class="concept">
+  <h3>🧮 Why Math Makes Good Worlds</h3>
+  <p>The key insight is <strong>layering</strong>:</p>
+  <ol>
+    <li><strong>Big waves</strong> (low frequency) create the overall shape — major hills and valleys</li>
+    <li><strong>Medium waves</strong> add smaller bumps and features</li>
+    <li><strong>Small waves</strong> (high frequency) add fine detail and roughness</li>
+  </ol>
+  <p>Each layer is called an <strong>octave</strong>. Real Minecraft uses 4-8 octaves of noise!</p>
+</div>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Generate multiple worlds and compare them — notice how each seed creates different terrain</li>
+    <li>Change the <code>* 15</code> multiplier to make terrain flatter or more extreme</li>
+    <li>Add sand blocks near the surface in low-lying areas (simulate beaches!)</li>
+    <li>Make caves by checking if noise value is above a threshold underground</li>
+    <li>Try using the same seed twice — do you get the same world? (You should!)</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li><strong>Noise</strong> is smooth randomness — nearby inputs give similar outputs</li>
+    <li>We create noise by adding <strong>sine waves at different scales</strong></li>
+    <li>A <strong>seed</strong> determines the world — same seed = same world</li>
+    <li><strong>Height maps</strong> define where the surface is at each column</li>
+    <li>Ores, trees, and caves are placed using noise and rules</li>
+    <li><strong>Layering</strong> octaves creates realistic terrain</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson10.html">← Lesson 10: Inventory System</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson12.html">Lesson 12: The Complete Game →</a>
+</div>
+
+</div>
+
+<script>
+// Demo: Random terrain
+{
+  const c=document.getElementById('demo-random');const ctx=c.getContext('2d');
+  ctx.fillStyle='#87ceeb';ctx.fillRect(0,0,600,150);
+  for(let x=0;x<600;x+=4){
+    const h=Math.floor(Math.random()*80)+20;
+    ctx.fillStyle='#4a8f29';ctx.fillRect(x,150-h,4,h);
+    ctx.fillStyle='#8b6914';ctx.fillRect(x,150-h+6,4,h-6);
+  }
+}
+
+// Demo: Noise terrain
+{
+  const c=document.getElementById('demo-noise');const ctx=c.getContext('2d');
+  ctx.fillStyle='#87ceeb';ctx.fillRect(0,0,600,150);
+  const seed=42;
+  for(let x=0;x<600;x+=4){
+    const h=Math.floor(60+Math.sin(x*0.02+seed)*20+Math.sin(x*0.05+seed*2)*10+Math.sin(x*0.1+seed*3)*5);
+    ctx.fillStyle='#5cb338';ctx.fillRect(x,150-h,4,4);
+    ctx.fillStyle='#4a8f29';ctx.fillRect(x,150-h+4,4,4);
+    ctx.fillStyle='#8b6914';ctx.fillRect(x,150-h+8,4,h-8);
+    ctx.fillStyle='#808080';ctx.fillRect(x,150-h+30,4,h-30);
+  }
+}
+
+// Demo: Full world generator
+function generateNewWorld(){
+  const c=document.getElementById('demo-world');const ctx=c.getContext('2d');
+  const S=6,COLS=100,ROWS=50;
+  const seed=Math.floor(Math.random()*999999);
+  document.getElementById('seed-display').textContent=seed;
+
+  function noise(x,s){return Math.sin(x*0.02+s)*0.5+Math.sin(x*0.05+s*2)*0.3+Math.sin(x*0.11+s*3)*0.15+Math.sin(x*0.2+s*0.5)*0.05;}
+
+  ctx.fillStyle='#87ceeb';ctx.fillRect(0,0,600,300);
+
+  const heights=[];
+  for(let col=0;col<COLS;col++){heights[col]=Math.floor(22+noise(col,seed)*12);}
+
+  // Draw world
+  for(let col=0;col<COLS;col++){
+    const surf=heights[col];
+    for(let row=0;row<ROWS;row++){
+      let color=null;
+      if(row<surf){continue;}
+      else if(row===surf){color='#5cb338';}
+      else if(row<surf+1){color='#4a8f29';}
+      else if(row<surf+4){color='#8b6914';}
+      else{
+        color='#808080';
+        const oreN=noise(col*3+row*5,seed+50);
+        if(oreN>0.7&&row>surf+15)color='#5ce8e8'; // diamond
+        else if(oreN>0.5&&row>surf+8)color='#c4956a'; // iron
+        else if(oreN>0.35&&row>surf+3)color='#444'; // coal
+        // Caves
+        const caveN=noise(col*2+row*3,seed+200)+noise(col*5+row*4,seed+300)*0.5;
+        if(caveN>0.7&&row>surf+2){color=null;}
+      }
+      if(row===ROWS-1)color='#333'; // bedrock
+      if(color){
+        ctx.fillStyle=color;
+        ctx.fillRect(col*S,row*S,S,S);
+      }
+    }
+  }
+
+  // Trees
+  for(let col=3;col<COLS-3;col++){
+    if(noise(col*5,seed+100)>0.3){
+      const surf=heights[col];
+      const th=3+Math.floor(Math.abs(noise(col*7,seed+150))*2);
+      for(let h=1;h<=th;h++){ctx.fillStyle='#6b4226';ctx.fillRect(col*S,(surf-h)*S,S,S);}
+      for(let lx=-1;lx<=1;lx++)for(let ly=-2;ly<=0;ly++){
+        if(Math.abs(lx)+Math.abs(ly)<=2){ctx.fillStyle='#2d7a2d';ctx.fillRect((col+lx)*S,(surf-th+ly)*S,S,S);}
+      }
+      col+=4;
+    }
+  }
+
+  // Seed label
+  ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(4,4,120,22);
+  ctx.fillStyle='#fff';ctx.font='12px Consolas';ctx.fillText('Seed: '+seed,10,19);
+}
+generateNewWorld();
+</script>
+</body>
+</html>

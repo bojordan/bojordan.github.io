@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 9: Breaking &amp; Placing Blocks - Build Your Own 2D Minecraft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; line-height: 1.7; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+  h1 { color: #5cb85c; font-size: 28px; margin-bottom: 5px; } .lesson-num { color: #f0ad4e; }
+  h2 { color: #5bc0de; margin: 30px 0 15px; font-size: 22px; }
+  h3 { color: #f0ad4e; margin: 20px 0 10px; }
+  p { margin: 12px 0; }
+  .intro { font-size: 17px; background: #16213e; border-left: 4px solid #5cb85c; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+  .concept { background: #16213e; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid #5bc0de; }
+  .concept h3 { margin-top: 0; color: #5bc0de; }
+  code { background: #2a2a4a; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; color: #e6db74; }
+  pre { background: #0d1117; padding: 18px; border-radius: 8px; overflow-x: auto; margin: 15px 0; border: 1px solid #333; }
+  pre code { background: none; padding: 0; color: #e0e0e0; display: block; line-height: 1.6; }
+  .game-box { background: #000; border: 2px solid #5cb85c; border-radius: 10px; margin: 20px 0; padding: 15px; text-align: center; }
+  .game-box p { color: #888; font-size: 13px; margin: 8px 0 0; }
+  canvas { border-radius: 4px; display: block; margin: 0 auto; }
+  .challenge { border: 2px dashed #f0ad4e; border-radius: 10px; padding: 20px; margin: 25px 0; }
+  .challenge h3 { color: #f0ad4e; margin-top: 0; } .challenge ul { padding-left: 25px; } .challenge li { margin: 5px 0; }
+  .nav { display: flex; justify-content: space-between; margin: 25px 0; }
+  .nav a { color: #5bc0de; text-decoration: none; padding: 10px 18px; background: #16213e; border-radius: 6px; }
+  .nav a:hover { background: #1a2744; }
+  .analogy { background: #1e3a5f; border-radius: 8px; padding: 15px; margin: 15px 0; } .analogy::before { content: '💡 '; }
+  .tip { background: #16213e; border-left: 4px solid #5cb85c; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+  ul, ol { padding-left: 25px; margin: 10px 0; } li { margin: 5px 0; }
+  .key-display { display: inline-block; background: #333; border: 2px solid #555; border-radius: 6px; padding: 4px 12px; font-family: Consolas, monospace; margin: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <a href="lesson08.html">← Lesson 8</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson10.html">Lesson 10 →</a>
+</div>
+
+<h1><span class="lesson-num">Lesson 9:</span> Breaking &amp; Placing Blocks</h1>
+<p class="intro">
+  The core of Minecraft! You click to <strong>break</strong> blocks and right-click
+  to <strong>place</strong> them. This lesson brings mouse input, coordinate
+  conversion, and world modification together. ⛏️🧱
+</p>
+
+<h2>Mouse Events</h2>
+<p>Just like keyboard events, the browser tells us when the mouse does things:</p>
+
+<pre><code>const mouse = { x: 0, y: 0, left: false, right: false };
+
+canvas.addEventListener('mousemove', function(event) {
+  mouse.x = event.clientX;  // Mouse X on screen
+  mouse.y = event.clientY;  // Mouse Y on screen
+});
+
+canvas.addEventListener('mousedown', function(event) {
+  if (event.button === 0) mouse.left = true;   // Left click
+  if (event.button === 2) mouse.right = true;  // Right click
+});
+
+canvas.addEventListener('mouseup', function(event) {
+  if (event.button === 0) mouse.left = false;
+  if (event.button === 2) mouse.right = false;
+});
+
+// Prevent the right-click menu from appearing
+canvas.addEventListener('contextmenu', function(event) {
+  event.preventDefault();
+});</code></pre>
+
+<h2>Screen to World Coordinates</h2>
+<p>
+  The mouse gives us <strong>screen</strong> coordinates, but we need to know which
+  <strong>block</strong> in the world the mouse is pointing at. We add the camera
+  position and divide by block size:
+</p>
+
+<pre><code>// Convert mouse screen position to world block coordinates
+const worldMouseX = Math.floor((mouse.x + cameraX) / BLOCK_SIZE);
+const worldMouseY = Math.floor((mouse.y + cameraY) / BLOCK_SIZE);</code></pre>
+
+<div class="concept">
+  <h3>📐 The Coordinate Chain</h3>
+  <ol>
+    <li><strong>Screen pixels</strong> → What the mouse reports (e.g., 350, 200)</li>
+    <li><strong>+ camera offset</strong> → World pixel position (e.g., 1350, 500)</li>
+    <li><strong>÷ block size, floor</strong> → Block grid position (e.g., column 42, row 15)</li>
+  </ol>
+</div>
+
+<h2>Reach Distance</h2>
+<p>In Minecraft, you can only break/place blocks within arm's reach. We check the
+distance between the player and the mouse cursor:</p>
+
+<pre><code>const REACH = 5;  // 5 blocks
+
+// Distance from player center to mouse block
+const playerCenterCol = (playerX + playerW / 2) / BLOCK_SIZE;
+const playerCenterRow = (playerY + playerH / 2) / BLOCK_SIZE;
+const distance = Math.hypot(worldMouseX - playerCenterCol,
+                           worldMouseY - playerCenterRow);
+
+if (distance &lt;= REACH) {
+  // Close enough to interact!
+}</code></pre>
+
+<h2>Breaking Blocks</h2>
+<pre><code>if (mouse.left &amp;&amp; distance &lt;= REACH) {
+  const block = getBlock(worldMouseX, worldMouseY);
+  if (block !== 0) {  // Not air
+    setBlock(worldMouseX, worldMouseY, 0);  // Replace with air!
+  }
+}</code></pre>
+
+<h2>Placing Blocks</h2>
+<pre><code>if (mouse.right &amp;&amp; distance &lt;= REACH) {
+  const block = getBlock(worldMouseX, worldMouseY);
+  if (block === 0) {  // Only place in empty space
+    setBlock(worldMouseX, worldMouseY, 3);  // Place stone
+  }
+}</code></pre>
+
+<h2>Block Highlight</h2>
+<p>We draw a white outline around the block the mouse is pointing at — so the player
+knows which block they'll interact with:</p>
+
+<pre><code>// Draw highlight around hovered block
+if (distance &lt;= REACH) {
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(
+    worldMouseX * BLOCK_SIZE - cameraX,
+    worldMouseY * BLOCK_SIZE - cameraY,
+    BLOCK_SIZE, BLOCK_SIZE
+  );
+}</code></pre>
+
+<h2>Try It! Mine and Build!</h2>
+<div class="game-box">
+  <canvas id="demo1" width="608" height="352" tabindex="0"></canvas>
+  <p>⬆️ Click here first!
+    <span class="key-display">A</span> <span class="key-display">D</span> move,
+    <span class="key-display">Space</span> jump,
+    <strong>Left-click</strong> = break,
+    <strong>Right-click</strong> = place stone
+  </p>
+</div>
+
+<div class="tip">
+  <strong>⚠️ Don't Place Blocks On Yourself!</strong> In the full game, we check
+  that the block we're placing doesn't overlap with the player. Otherwise, you'd get
+  stuck inside your own block! We handle that in the demo above.
+</div>
+
+<div class="challenge">
+  <h3>🏆 Challenges — Try These!</h3>
+  <ul>
+    <li>Dig straight down and see what happens — can you reach the bottom of the world?</li>
+    <li>Build a tower by stacking blocks upward</li>
+    <li>Build a small house with walls and a roof</li>
+    <li>Change the placed block type from stone (3) to dirt (2) or grass (1)</li>
+    <li>Add a "mining progress" bar that fills up before the block breaks (make it take multiple frames)</li>
+  </ul>
+</div>
+
+<div class="concept">
+  <h3>📝 What We Learned</h3>
+  <ul>
+    <li><strong>Mouse events</strong>: <code>mousemove</code>, <code>mousedown</code>, <code>mouseup</code></li>
+    <li>Converting <strong>screen → world → block</strong> coordinates</li>
+    <li><strong>Reach distance</strong> limits how far the player can interact</li>
+    <li>Breaking = setting a block to 0 (air)</li>
+    <li>Placing = setting an air block to a block type</li>
+    <li><strong>Block highlight</strong> shows which block will be affected</li>
+  </ul>
+</div>
+
+<div class="nav">
+  <a href="lesson08.html">← Lesson 8: Scrolling Camera</a>
+  <a href="index.html">📚 All Lessons</a>
+  <a href="lesson10.html">Lesson 10: Inventory System →</a>
+</div>
+
+</div>
+
+<script>
+{
+  const c = document.getElementById('demo1');
+  const ctx = c.getContext('2d');
+  const S=32,COLS=40,ROWS=16,GRAVITY=0.5,JUMP=-9.5,SPD=3.5,PW=20,PH=48,REACH=5;
+  const world=[];
+  for(let r=0;r<ROWS;r++){world[r]=[];for(let cc=0;cc<COLS;cc++){
+    const h=Math.floor(10+Math.sin(cc*0.15)*2+Math.sin(cc*0.3));
+    if(r===ROWS-1)world[r][cc]=3;else if(r>=h+3)world[r][cc]=3;else if(r>h)world[r][cc]=2;else if(r===h)world[r][cc]=1;else world[r][cc]=0;
+  }}
+  // Tree
+  world[8][8]=4;world[7][8]=4;world[6][8]=4;world[5][7]=5;world[5][8]=5;world[5][9]=5;world[4][8]=5;
+  world[9][20]=4;world[8][20]=4;world[7][20]=4;world[6][19]=5;world[6][20]=5;world[6][21]=5;world[5][20]=5;
+
+  const COLORS={1:'#4a8f29',2:'#8b6914',3:'#808080',4:'#6b4226',5:'#2d7a2d'};
+  const TOPS={1:'#5cb338'};
+  function getBlock(col,row){if(col<0||col>=COLS||row<0||row>=ROWS)return 0;return world[row][col];}
+  function setBlock(col,row,b){if(col<0||col>=COLS||row<0||row>=ROWS)return;world[row][col]=b;}
+  function isSolid(col,row){const b=getBlock(col,row);return b!==0&&b!==5;}
+  function collides(px,py,pw,ph){
+    const c1=Math.floor(px/S),c2=Math.floor((px+pw-1)/S),r1=Math.floor(py/S),r2=Math.floor((py+ph-1)/S);
+    for(let cc=c1;cc<=c2;cc++)for(let r=r1;r<=r2;r++)if(isSolid(cc,r))return true;return false;
+  }
+
+  let px=100,py=100,vy=0,onGround=false,facing=1;
+  let camX=0,camY=0,camInit=false;
+  const keys={};const mouse={x:0,y:0,left:false,right:false};
+  let placeCooldown=0;
+
+  document.addEventListener('keydown',e=>{if(['KeyA','KeyD','Space','ArrowLeft','ArrowRight','ArrowUp'].includes(e.code)){keys[e.code]=true;e.preventDefault();}});
+  document.addEventListener('keyup',e=>{keys[e.code]=false;});
+
+  const rect=c.getBoundingClientRect.bind(c);
+  c.addEventListener('mousemove',e=>{const r=c.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;});
+  c.addEventListener('mousedown',e=>{e.preventDefault();if(e.button===0)mouse.left=true;if(e.button===2)mouse.right=true;});
+  c.addEventListener('mouseup',e=>{if(e.button===0)mouse.left=false;if(e.button===2)mouse.right=false;});
+  c.addEventListener('contextmenu',e=>e.preventDefault());
+
+  function drawPlayer2(x,y){
+    ctx.save();
+    if(facing===-1){ctx.translate(x+PW/2,0);ctx.scale(-1,1);ctx.translate(-(x+PW/2),0);}
+    const w=(keys['KeyA']||keys['KeyD'])&&onGround?Math.sin(Date.now()*0.012)*3:0;
+    ctx.fillStyle='#c8a882';ctx.fillRect(x+2,y,16,14);
+    ctx.fillStyle='#fff';ctx.fillRect(x+5,y+4,4,4);ctx.fillRect(x+11,y+4,4,4);
+    ctx.fillStyle='#222';ctx.fillRect(x+7,y+5,2,3);ctx.fillRect(x+13,y+5,2,3);
+    ctx.fillStyle='#4a2a0a';ctx.fillRect(x+1,y,18,4);
+    ctx.fillStyle='#44aa88';ctx.fillRect(x+1,y+15,18,16);
+    ctx.fillStyle='#1a3a8a';ctx.fillRect(x+2,y+31+w,7,17);ctx.fillRect(x+11,y+31-w,7,17);
+    ctx.restore();
+  }
+
+  function loop(){
+    let nx=px;
+    if(keys['KeyA']||keys['ArrowLeft']){nx-=SPD;facing=-1;}
+    if(keys['KeyD']||keys['ArrowRight']){nx+=SPD;facing=1;}
+    if(!collides(nx,py,PW,PH))px=nx;
+    if((keys['Space']||keys['ArrowUp'])&&onGround){vy=JUMP;onGround=false;}
+    vy+=GRAVITY;if(vy>12)vy=12;
+    let ny=py+vy;
+    if(!collides(px,ny,PW,PH)){py=ny;onGround=false;}
+    else{if(vy>0){py=Math.floor((py+PH+vy)/S)*S-PH;onGround=true;}else{py=Math.ceil(py/S)*S;}vy=0;}
+    if(px<0)px=0;if(px>COLS*S-PW)px=COLS*S-PW;
+    if(py>ROWS*S){py=100;vy=0;px=100;}
+
+    const tx=px+PW/2-304,ty=py+PH/2-176;
+    if(!camInit){camX=tx;camY=ty;camInit=true;}
+    camX+=(tx-camX)*0.1;camY+=(ty-camY)*0.1;
+    camX=Math.max(0,Math.min(camX,COLS*S-608));camY=Math.max(0,Math.min(camY,ROWS*S-352));
+
+    ctx.fillStyle='#87ceeb';ctx.fillRect(0,0,608,352);
+    const sc=Math.max(0,Math.floor(camX/S)),sr=Math.max(0,Math.floor(camY/S));
+    const ec=Math.min(COLS,Math.ceil((camX+608)/S)+1),er=Math.min(ROWS,Math.ceil((camY+352)/S)+1);
+    for(let r=sr;r<er;r++)for(let cc=sc;cc<ec;cc++){
+      if(world[r][cc]===0){let sf=ROWS;for(let s=0;s<ROWS;s++)if(world[s][cc]!==0&&world[s][cc]!==5){sf=s;break;}
+        if(r>sf){ctx.fillStyle='rgba(50,40,30,0.3)';ctx.fillRect(cc*S-camX,r*S-camY,S,S);}}
+    }
+    for(let r=sr;r<er;r++)for(let cc=sc;cc<ec;cc++){
+      const b=world[r][cc];if(b===0)continue;
+      const x=cc*S-camX,y=r*S-camY;
+      ctx.fillStyle=COLORS[b]||'#888';ctx.fillRect(x,y,S,S);
+      if(TOPS[b]){ctx.fillStyle=TOPS[b];ctx.fillRect(x,y,S,6);}
+      if(b===4){ctx.strokeStyle='#5a3520';ctx.lineWidth=1;for(let i=4;i<S;i+=6){ctx.beginPath();ctx.moveTo(x,y+i);ctx.lineTo(x+S,y+i);ctx.stroke();}}
+      ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.strokeRect(x,y,S,S);
+    }
+
+    // Mouse block
+    const wmx=Math.floor((mouse.x+camX)/S),wmy=Math.floor((mouse.y+camY)/S);
+    const pcx=(px+PW/2)/S,pcy=(py+PH/2)/S;
+    const dist=Math.hypot(wmx-pcx,wmy-pcy);
+
+    if(placeCooldown>0)placeCooldown--;
+
+    if(dist<=REACH&&wmx>=0&&wmx<COLS&&wmy>=0&&wmy<ROWS){
+      ctx.strokeStyle='rgba(255,255,255,0.6)';ctx.lineWidth=2;
+      ctx.strokeRect(wmx*S-camX,wmy*S-camY,S,S);
+      // Break
+      if(mouse.left){const b=getBlock(wmx,wmy);if(b!==0)setBlock(wmx,wmy,0);}
+      // Place
+      if(mouse.right&&placeCooldown===0){
+        const b=getBlock(wmx,wmy);
+        if(b===0){
+          const bx=wmx*S,by=wmy*S;
+          const overlap=!(px+PW<=bx||px>=bx+S||py+PH<=by||py>=by+S);
+          if(!overlap){setBlock(wmx,wmy,3);placeCooldown=8;}
+        }
+      }
+    }
+
+    drawPlayer2(px-camX,py-camY);
+
+    // Crosshair
+    ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(mouse.x-8,mouse.y);ctx.lineTo(mouse.x+8,mouse.y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mouse.x,mouse.y-8);ctx.lineTo(mouse.x,mouse.y+8);ctx.stroke();
+
+    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(8,8,350,28);
+    ctx.fillStyle='#fff';ctx.font='12px Consolas';
+    ctx.fillText('Left-click = BREAK block | Right-click = PLACE stone',14,27);
+
+    requestAnimationFrame(loop);
+  }
+  c.focus();
+  loop();
+}
+</script>
+</body>
+</html>

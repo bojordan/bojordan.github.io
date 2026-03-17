@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D Minecraft Clone</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    overflow: hidden;
+    font-family: 'Segoe UI', monospace;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas { display: block; }
+  #ui-layer {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #hotbar {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 4px; pointer-events: auto;
+  }
+  .hotbar-slot {
+    width: 52px; height: 52px; border: 2px solid #555;
+    background: rgba(0,0,0,0.7); display: flex; align-items: center;
+    justify-content: center; position: relative; cursor: pointer;
+  }
+  .hotbar-slot.selected { border-color: #fff; background: rgba(80,80,80,0.8); }
+  .hotbar-slot canvas { width: 36px; height: 36px; image-rendering: pixelated; }
+  .slot-count {
+    position: absolute; bottom: 2px; right: 4px;
+    color: #fff; font-size: 11px; font-weight: bold;
+    text-shadow: 1px 1px 1px #000;
+  }
+  .slot-key {
+    position: absolute; top: 1px; left: 4px;
+    color: #aaa; font-size: 9px;
+  }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: white; font-size: 24px; opacity: 0.6;
+    pointer-events: none; text-shadow: 0 0 2px #000;
+  }
+  #debug-info {
+    position: absolute; top: 8px; left: 8px;
+    color: #fff; font-size: 12px; background: rgba(0,0,0,0.5);
+    padding: 6px 10px; border-radius: 4px; pointer-events: none;
+    line-height: 1.6;
+  }
+  #health-bar {
+    position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 2px; pointer-events: none;
+  }
+  .heart { width: 16px; height: 16px; font-size: 14px; text-align: center; }
+  #inventory-screen {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.75); display: none; align-items: center;
+    justify-content: center; pointer-events: auto; flex-direction: column;
+  }
+  #inventory-screen.open { display: flex; }
+  #inventory-grid {
+    display: grid; grid-template-columns: repeat(9, 52px); gap: 4px;
+    padding: 12px; background: #8b8b8b; border: 3px solid #555;
+  }
+  .inv-slot {
+    width: 52px; height: 52px; border: 2px solid #373737;
+    background: #8b8b8b; display: flex; align-items: center;
+    justify-content: center; position: relative; cursor: pointer;
+  }
+  .inv-slot:hover { border-color: #fff; }
+  .inv-slot canvas { width: 36px; height: 36px; image-rendering: pixelated; }
+  #crafting-area {
+    display: grid; grid-template-columns: repeat(3, 52px) 30px 52px;
+    gap: 4px; padding: 12px; background: #8b8b8b;
+    border: 3px solid #555; margin-bottom: 10px; align-items: center;
+  }
+  #craft-arrow { text-align: center; font-size: 24px; color: #373737; }
+  #inv-title { color: #ddd; font-size: 16px; margin-bottom: 8px; }
+  #message-area {
+    position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+    color: #fff; font-size: 14px; text-align: center;
+    pointer-events: none; text-shadow: 1px 1px 2px #000;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  #message-area.show { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui-layer">
+  <div id="crosshair">+</div>
+  <div id="debug-info"></div>
+  <div id="health-bar"></div>
+  <div id="hotbar"></div>
+  <div id="message-area"></div>
+  <div id="inventory-screen">
+    <div id="inv-title">Inventory &amp; Crafting (E to close)</div>
+    <div id="crafting-area"></div>
+    <div id="inventory-grid"></div>
+  </div>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────
+const BLOCK = 32;
+const WORLD_W = 512;
+const WORLD_H = 128;
+const SEA_LEVEL = 64;
+const GRAVITY = 0.55;
+const JUMP_FORCE = -9.5;
+const MOVE_SPEED = 3.8;
+const REACH = 5; // blocks
+const TICK_RATE = 1000 / 60;
+
+// ── Block Types ────────────────────────────────────────────
+const B = {
+  AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, WATER: 5,
+  WOOD: 6, LEAVES: 7, COAL_ORE: 8, IRON_ORE: 9, DIAMOND_ORE: 10,
+  BEDROCK: 11, PLANKS: 12, COBBLESTONE: 13, CRAFTING_TABLE: 14,
+  GLASS: 15, BRICK: 16, TORCH: 17, SNOW: 18, GRAVEL: 19,
+  GOLD_ORE: 20
+};
+
+const BLOCK_INFO = {
+  [B.AIR]:            { name: 'Air',            color: null, hardness: 0 },
+  [B.GRASS]:          { name: 'Grass',          color: '#4a8f29', top: '#5cb338', hardness: 1 },
+  [B.DIRT]:           { name: 'Dirt',           color: '#8b6914', hardness: 1 },
+  [B.STONE]:          { name: 'Stone',          color: '#808080', hardness: 3, drop: B.COBBLESTONE },
+  [B.SAND]:           { name: 'Sand',           color: '#dccc6e', hardness: 1 },
+  [B.WATER]:          { name: 'Water',          color: 'rgba(30,100,200,0.55)', hardness: -1 },
+  [B.WOOD]:           { name: 'Wood',           color: '#6b4226', hardness: 2 },
+  [B.LEAVES]:         { name: 'Leaves',         color: '#2d7a2d', hardness: 0.5 },
+  [B.COAL_ORE]:       { name: 'Coal Ore',       color: '#808080', spot: '#222', hardness: 3 },
+  [B.IRON_ORE]:       { name: 'Iron Ore',       color: '#808080', spot: '#c4956a', hardness: 4 },
+  [B.DIAMOND_ORE]:    { name: 'Diamond Ore',    color: '#808080', spot: '#5ce8e8', hardness: 5 },
+  [B.BEDROCK]:        { name: 'Bedrock',        color: '#333', hardness: -1 },
+  [B.PLANKS]:         { name: 'Planks',         color: '#b8883c', hardness: 2 },
+  [B.COBBLESTONE]:    { name: 'Cobblestone',    color: '#6e6e6e', hardness: 3 },
+  [B.CRAFTING_TABLE]: { name: 'Crafting Table', color: '#b8883c', top: '#8b5e34', hardness: 2 },
+  [B.GLASS]:          { name: 'Glass',          color: 'rgba(200,220,255,0.35)', hardness: 0.5 },
+  [B.BRICK]:          { name: 'Brick',          color: '#964B00', hardness: 3 },
+  [B.TORCH]:          { name: 'Torch',          color: '#b8883c', hardness: 0 },
+  [B.SNOW]:           { name: 'Snow',           color: '#f0f0f0', hardness: 0.5 },
+  [B.GRAVEL]:         { name: 'Gravel',         color: '#888078', hardness: 1 },
+  [B.GOLD_ORE]:       { name: 'Gold Ore',       color: '#808080', spot: '#ffd700', hardness: 4 },
+};
+
+// ── Crafting Recipes ───────────────────────────────────────
+const RECIPES = [
+  { input: { [B.WOOD]: 1 }, output: { block: B.PLANKS, count: 4 } },
+  { input: { [B.PLANKS]: 4 }, output: { block: B.CRAFTING_TABLE, count: 1 } },
+  { input: { [B.SAND]: 4 }, output: { block: B.GLASS, count: 4 } },
+  { input: { [B.STONE]: 4 }, output: { block: B.BRICK, count: 4 } },
+  { input: { [B.COBBLESTONE]: 1, [B.COAL_ORE]: 1 }, output: { block: B.TORCH, count: 4 } },
+];
+
+// ── Canvas Setup ───────────────────────────────────────────
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Simple Noise (Perlin-ish) ──────────────────────────────
+function createNoise(seed) {
+  const perm = new Uint8Array(512);
+  let s = seed;
+  function rng() { s = (s * 16807 + 0) % 2147483647; return (s - 1) / 2147483646; }
+  const p = Array.from({length: 256}, (_, i) => i);
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [p[i], p[j]] = [p[j], p[i]];
+  }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+
+  function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function lerp(a, b, t) { return a + t * (b - a); }
+  function grad(h, x) { return (h & 1) === 0 ? x : -x; }
+
+  return function noise(x) {
+    const xi = Math.floor(x) & 255;
+    const xf = x - Math.floor(x);
+    return lerp(grad(perm[xi], xf), grad(perm[xi + 1], xf - 1), fade(xf));
+  };
+}
+
+// ── World Generation ───────────────────────────────────────
+const world = new Uint8Array(WORLD_W * WORLD_H);
+const SEED = Math.floor(Math.random() * 999999);
+const noise1 = createNoise(SEED);
+const noise2 = createNoise(SEED + 42);
+const noise3 = createNoise(SEED + 137);
+
+function getBlock(x, y) {
+  if (x < 0 || x >= WORLD_W || y < 0 || y >= WORLD_H) return B.AIR;
+  return world[y * WORLD_W + x];
+}
+function setBlock(x, y, b) {
+  if (x < 0 || x >= WORLD_W || y < 0 || y >= WORLD_H) return;
+  world[y * WORLD_W + x] = b;
+}
+
+function generateWorld() {
+  const heightMap = [];
+  for (let x = 0; x < WORLD_W; x++) {
+    let h = SEA_LEVEL;
+    h += noise1(x * 0.02) * 15;
+    h += noise2(x * 0.05) * 7;
+    h += noise3(x * 0.1) * 3;
+    heightMap[x] = Math.floor(h);
+  }
+
+  for (let x = 0; x < WORLD_W; x++) {
+    const surfaceY = heightMap[x];
+    for (let y = 0; y < WORLD_H; y++) {
+      if (y === WORLD_H - 1) {
+        setBlock(x, y, B.BEDROCK);
+      } else if (y > surfaceY + 20) {
+        // Deep stone with ores
+        const caveNoise = noise2(x * 0.08 + y * 0.08) + noise3(x * 0.15 + y * 0.15) * 0.5;
+        if (caveNoise > 0.6) {
+          setBlock(x, y, B.AIR); // caves
+        } else {
+          let block = B.STONE;
+          const oreRoll = noise1(x * 0.5 + y * 0.7) + noise3(y * 0.3 + x * 0.2);
+          if (oreRoll > 1.2 && y > surfaceY + 30) block = B.DIAMOND_ORE;
+          else if (oreRoll > 1.0 && y > surfaceY + 20) block = B.GOLD_ORE;
+          else if (oreRoll > 0.85 && y > surfaceY + 15) block = B.IRON_ORE;
+          else if (oreRoll > 0.7) block = B.COAL_ORE;
+          setBlock(x, y, block);
+        }
+      } else if (y > surfaceY + 4) {
+        const caveNoise = noise2(x * 0.08 + y * 0.08) + noise3(x * 0.15 + y * 0.15) * 0.5;
+        if (caveNoise > 0.7) {
+          setBlock(x, y, B.AIR);
+        } else {
+          setBlock(x, y, B.STONE);
+        }
+      } else if (y > surfaceY) {
+        setBlock(x, y, B.DIRT);
+      } else if (y === surfaceY) {
+        setBlock(x, y, B.GRASS);
+      } else {
+        setBlock(x, y, B.AIR);
+      }
+    }
+  }
+
+  // Trees
+  for (let x = 5; x < WORLD_W - 5; x++) {
+    if (noise1(x * 0.3) > 0.4 && noise2(x * 0.7) > 0.1) {
+      const sy = heightMap[x];
+      if (getBlock(x, sy) === B.GRASS) {
+        const treeH = 4 + Math.floor(Math.abs(noise3(x * 1.5)) * 3);
+        for (let ty = 1; ty <= treeH; ty++) setBlock(x, sy - ty, B.WOOD);
+        // Canopy
+        for (let lx = -2; lx <= 2; lx++) {
+          for (let ly = -3; ly <= -1; ly++) {
+            const dist = Math.abs(lx) + Math.abs(ly + 2);
+            if (dist <= 3 && getBlock(x + lx, sy - treeH + ly) === B.AIR) {
+              setBlock(x + lx, sy - treeH + ly, B.LEAVES);
+            }
+          }
+        }
+        setBlock(x, sy - treeH - 1, B.LEAVES);
+        x += 4; // spacing
+      }
+    }
+  }
+}
+
+generateWorld();
+
+// ── Block Texture Rendering ────────────────────────────────
+const blockTextures = {};
+function renderBlockTexture(type) {
+  if (blockTextures[type]) return blockTextures[type];
+  const c = document.createElement('canvas');
+  c.width = BLOCK; c.height = BLOCK;
+  const cx = c.getContext('2d');
+  const info = BLOCK_INFO[type];
+  if (!info || !info.color) return null;
+
+  cx.fillStyle = info.color;
+  cx.fillRect(0, 0, BLOCK, BLOCK);
+
+  // Top shading for grass
+  if (info.top) {
+    cx.fillStyle = info.top;
+    cx.fillRect(0, 0, BLOCK, 6);
+  }
+
+  // Ore spots
+  if (info.spot) {
+    cx.fillStyle = info.spot;
+    const spots = [[6,8,4,3],[18,5,3,4],[12,18,4,3],[22,22,3,3],[8,24,3,2]];
+    spots.forEach(([sx, sy, sw, sh]) => cx.fillRect(sx, sy, sw, sh));
+  }
+
+  // Wood grain
+  if (type === B.WOOD) {
+    cx.strokeStyle = '#5a3520';
+    cx.lineWidth = 1;
+    for (let i = 4; i < BLOCK; i += 6) {
+      cx.beginPath(); cx.moveTo(0, i); cx.lineTo(BLOCK, i); cx.stroke();
+    }
+  }
+
+  // Planks pattern
+  if (type === B.PLANKS || type === B.CRAFTING_TABLE) {
+    cx.strokeStyle = 'rgba(0,0,0,0.2)';
+    cx.lineWidth = 1;
+    cx.beginPath(); cx.moveTo(0, BLOCK / 2); cx.lineTo(BLOCK, BLOCK / 2); cx.stroke();
+    cx.beginPath(); cx.moveTo(BLOCK / 2, 0); cx.lineTo(BLOCK / 2, BLOCK); cx.stroke();
+  }
+
+  // Brick pattern
+  if (type === B.BRICK) {
+    cx.strokeStyle = '#6e3a1e';
+    cx.lineWidth = 1;
+    for (let row = 0; row < 4; row++) {
+      const yy = row * 8;
+      cx.strokeRect(0, yy, BLOCK, 8);
+      const off = (row % 2) * 16;
+      cx.beginPath(); cx.moveTo(off, yy); cx.lineTo(off, yy + 8); cx.stroke();
+      cx.beginPath(); cx.moveTo(off + 16, yy); cx.lineTo(off + 16, yy + 8); cx.stroke();
+    }
+  }
+
+  // Torch
+  if (type === B.TORCH) {
+    cx.clearRect(0, 0, BLOCK, BLOCK);
+    cx.fillStyle = '#8b6914';
+    cx.fillRect(13, 8, 6, 22);
+    cx.fillStyle = '#ffa500';
+    cx.fillRect(12, 3, 8, 7);
+    cx.fillStyle = '#ffdd44';
+    cx.fillRect(14, 4, 4, 4);
+  }
+
+  // Gravel noise
+  if (type === B.GRAVEL) {
+    for (let i = 0; i < 30; i++) {
+      cx.fillStyle = `rgba(0,0,0,${Math.random() * 0.3})`;
+      cx.fillRect(Math.random() * BLOCK, Math.random() * BLOCK, 3, 3);
+    }
+  }
+
+  // Leaves detail
+  if (type === B.LEAVES) {
+    for (let i = 0; i < 15; i++) {
+      cx.fillStyle = `rgba(20,${100 + Math.random() * 55},20,0.4)`;
+      cx.fillRect(Math.random() * BLOCK, Math.random() * BLOCK, 4, 4);
+    }
+  }
+
+  // Glass pane lines
+  if (type === B.GLASS) {
+    cx.strokeStyle = 'rgba(200,220,255,0.5)';
+    cx.lineWidth = 1;
+    cx.strokeRect(1, 1, BLOCK - 2, BLOCK - 2);
+    cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(BLOCK, BLOCK); cx.stroke();
+  }
+
+  // Block outline
+  cx.strokeStyle = 'rgba(0,0,0,0.15)';
+  cx.lineWidth = 1;
+  cx.strokeRect(0, 0, BLOCK, BLOCK);
+
+  blockTextures[type] = c;
+  return c;
+}
+
+// Pre-render all block textures
+Object.keys(BLOCK_INFO).forEach(k => renderBlockTexture(Number(k)));
+
+// ── Player ─────────────────────────────────────────────────
+const player = {
+  x: WORLD_W / 2 * BLOCK,
+  y: 0,
+  w: 22, h: 56,
+  vx: 0, vy: 0,
+  onGround: false,
+  health: 20,
+  maxHealth: 20,
+  miningBlock: null,
+  miningProgress: 0,
+  facing: 1, // 1=right, -1=left
+};
+
+// Find spawn point
+{
+  const sx = Math.floor(WORLD_W / 2);
+  for (let y = 0; y < WORLD_H; y++) {
+    if (getBlock(sx, y) !== B.AIR) {
+      player.y = (y - 3) * BLOCK;
+      break;
+    }
+  }
+}
+
+// ── Inventory ──────────────────────────────────────────────
+const inventory = new Array(36).fill(null); // 36 slots, first 9 = hotbar
+let selectedSlot = 0;
+let inventoryOpen = false;
+
+// Give starter items
+inventory[0] = { block: B.DIRT, count: 10 };
+inventory[1] = { block: B.COBBLESTONE, count: 10 };
+inventory[2] = { block: B.PLANKS, count: 10 };
+inventory[3] = { block: B.TORCH, count: 5 };
+
+function addToInventory(blockType, count = 1) {
+  // Stack with existing
+  for (let i = 0; i < 36; i++) {
+    if (inventory[i] && inventory[i].block === blockType) {
+      inventory[i].count += count;
+      return true;
+    }
+  }
+  // Find empty slot
+  for (let i = 0; i < 36; i++) {
+    if (!inventory[i]) {
+      inventory[i] = { block: blockType, count };
+      return true;
+    }
+  }
+  return false; // full
+}
+
+function removeFromSlot(slot, count = 1) {
+  if (!inventory[slot]) return;
+  inventory[slot].count -= count;
+  if (inventory[slot].count <= 0) inventory[slot] = null;
+}
+
+// ── Input ──────────────────────────────────────────────────
+const keys = {};
+const mouse = { x: 0, y: 0, left: false, right: false };
+let mouseWorldX = 0, mouseWorldY = 0;
+
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyE') {
+    inventoryOpen = !inventoryOpen;
+    document.getElementById('inventory-screen').classList.toggle('open', inventoryOpen);
+    updateInventoryUI();
+  }
+  // Hotbar keys 1-9
+  if (e.code >= 'Digit1' && e.code <= 'Digit9') {
+    selectedSlot = parseInt(e.key) - 1;
+    updateHotbarUI();
+  }
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+canvas.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+canvas.addEventListener('mousedown', e => {
+  if (inventoryOpen) return;
+  e.preventDefault();
+  if (e.button === 0) mouse.left = true;
+  if (e.button === 2) mouse.right = true;
+});
+canvas.addEventListener('mouseup', e => {
+  if (e.button === 0) { mouse.left = false; player.miningBlock = null; player.miningProgress = 0; }
+  if (e.button === 2) mouse.right = false;
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => {
+  selectedSlot = (selectedSlot + Math.sign(e.deltaY) + 9) % 9;
+  updateHotbarUI();
+});
+
+// ── Camera ─────────────────────────────────────────────────
+const camera = { x: 0, y: 0, init: false };
+
+function updateCamera() {
+  const targetX = player.x + player.w / 2 - canvas.width / 2;
+  const targetY = player.y + player.h / 2 - canvas.height / 2;
+  if (!camera.init) {
+    camera.x = targetX;
+    camera.y = targetY;
+    camera.init = true;
+  }
+  camera.x += (targetX - camera.x) * 0.1;
+  camera.y += (targetY - camera.y) * 0.1;
+  // Clamp
+  camera.x = Math.max(0, Math.min(camera.x, WORLD_W * BLOCK - canvas.width));
+  camera.y = Math.max(0, Math.min(camera.y, WORLD_H * BLOCK - canvas.height));
+}
+
+// ── Collision Detection ────────────────────────────────────
+function isSolid(x, y) {
+  const b = getBlock(x, y);
+  return b !== B.AIR && b !== B.WATER && b !== B.TORCH && BLOCK_INFO[b]?.hardness !== undefined;
+}
+
+function collides(px, py, pw, ph) {
+  const x1 = Math.floor(px / BLOCK);
+  const y1 = Math.floor(py / BLOCK);
+  const x2 = Math.floor((px + pw - 1) / BLOCK);
+  const y2 = Math.floor((py + ph - 1) / BLOCK);
+  for (let bx = x1; bx <= x2; bx++) {
+    for (let by = y1; by <= y2; by++) {
+      if (isSolid(bx, by)) return true;
+    }
+  }
+  return false;
+}
+
+// ── Physics & Movement ────────────────────────────────────
+function updatePlayer() {
+  // Horizontal movement
+  let moveX = 0;
+  if (keys['KeyA'] || keys['ArrowLeft'])  { moveX = -MOVE_SPEED; player.facing = -1; }
+  if (keys['KeyD'] || keys['ArrowRight']) { moveX = MOVE_SPEED; player.facing = 1; }
+
+  // Apply horizontal
+  player.vx = moveX;
+  const newX = player.x + player.vx;
+  if (!collides(newX, player.y, player.w, player.h)) {
+    player.x = newX;
+  } else {
+    // Slide along wall - try stepping up 1 block
+    if (player.onGround && !collides(newX, player.y - BLOCK, player.w, player.h)) {
+      player.x = newX;
+      player.y -= BLOCK;
+    }
+    player.vx = 0;
+  }
+
+  // Jump
+  if ((keys['KeyW'] || keys['ArrowUp'] || keys['Space']) && player.onGround) {
+    player.vy = JUMP_FORCE;
+    player.onGround = false;
+  }
+
+  // Gravity
+  player.vy += GRAVITY;
+  if (player.vy > 15) player.vy = 15;
+
+  // Vertical collision
+  const newY = player.y + player.vy;
+  if (!collides(player.x, newY, player.w, player.h)) {
+    player.y = newY;
+    player.onGround = false;
+  } else {
+    if (player.vy > 0) {
+      // Snap to ground
+      player.y = Math.floor((player.y + player.h + player.vy) / BLOCK) * BLOCK - player.h;
+      // Fall damage
+      if (player.vy > 10) {
+        player.health -= Math.floor((player.vy - 10) * 2);
+        showMessage('Ouch!');
+      }
+      player.onGround = true;
+    } else {
+      player.y = Math.ceil(player.y / BLOCK) * BLOCK;
+    }
+    player.vy = 0;
+  }
+
+  // Water floating
+  const inWater = getBlock(Math.floor((player.x + player.w / 2) / BLOCK),
+                           Math.floor((player.y + player.h / 2) / BLOCK)) === B.WATER;
+  if (inWater) {
+    player.vy *= 0.7;
+    if (keys['KeyW'] || keys['ArrowUp'] || keys['Space']) player.vy -= 0.6;
+  }
+
+  // World boundaries
+  player.x = Math.max(0, Math.min(player.x, WORLD_W * BLOCK - player.w));
+  if (player.y > WORLD_H * BLOCK) {
+    player.health = 0;
+  }
+
+  // Health regen
+  if (player.health < player.maxHealth && Math.random() < 0.003) {
+    player.health = Math.min(player.maxHealth, player.health + 1);
+  }
+}
+
+// ── Block Interaction ──────────────────────────────────────
+let rightClickCooldown = 0;
+
+function updateBlockInteraction() {
+  mouseWorldX = Math.floor((mouse.x + camera.x) / BLOCK);
+  mouseWorldY = Math.floor((mouse.y + camera.y) / BLOCK);
+
+  const playerCenterX = (player.x + player.w / 2) / BLOCK;
+  const playerCenterY = (player.y + player.h / 2) / BLOCK;
+  const dist = Math.hypot(mouseWorldX - playerCenterX, mouseWorldY - playerCenterY);
+
+  if (rightClickCooldown > 0) rightClickCooldown--;
+
+  if (dist > REACH) {
+    player.miningBlock = null;
+    player.miningProgress = 0;
+    return;
+  }
+
+  // Mining (left click)
+  if (mouse.left) {
+    const target = getBlock(mouseWorldX, mouseWorldY);
+    if (target !== B.AIR && target !== B.WATER && BLOCK_INFO[target].hardness >= 0) {
+      const key = `${mouseWorldX},${mouseWorldY}`;
+      if (player.miningBlock !== key) {
+        player.miningBlock = key;
+        player.miningProgress = 0;
+      }
+      player.miningProgress += 1 / (BLOCK_INFO[target].hardness * 15 + 5);
+      if (player.miningProgress >= 1) {
+        // Drop item
+        const drop = BLOCK_INFO[target].drop || target;
+        addToInventory(drop);
+        setBlock(mouseWorldX, mouseWorldY, B.AIR);
+        player.miningBlock = null;
+        player.miningProgress = 0;
+        updateHotbarUI();
+      }
+    }
+  } else {
+    player.miningBlock = null;
+    player.miningProgress = 0;
+  }
+
+  // Placing (right click)
+  if (mouse.right && rightClickCooldown === 0) {
+    const target = getBlock(mouseWorldX, mouseWorldY);
+    if (target === B.AIR || target === B.WATER) {
+      const item = inventory[selectedSlot];
+      if (item && item.count > 0) {
+        // Don't place inside the player
+        const bx = mouseWorldX * BLOCK, by = mouseWorldY * BLOCK;
+        const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
+        const blockRect = { x: bx, y: by, w: BLOCK, h: BLOCK };
+        const overlap = !(playerRect.x + playerRect.w <= blockRect.x ||
+                         playerRect.x >= blockRect.x + blockRect.w ||
+                         playerRect.y + playerRect.h <= blockRect.y ||
+                         playerRect.y >= blockRect.y + blockRect.h);
+        if (!overlap) {
+          setBlock(mouseWorldX, mouseWorldY, item.block);
+          removeFromSlot(selectedSlot);
+          updateHotbarUI();
+          rightClickCooldown = 8;
+        }
+      }
+    }
+  }
+}
+
+// ── Rendering ──────────────────────────────────────────────
+// ── Time ───────────────────────────────────────────────────
+let gameTime = 30000; // start at noon (0.25 into cycle = daytime)
+
+function getTimeOfDay() {
+  const cycle = 120000; // 2 min day/night
+  const t = (gameTime % cycle) / cycle;
+  return t;
+}
+
+function getSkyColor(t) {
+  if (t < 0.2) { // dawn
+    const f = t / 0.2;
+    return lerpColor('#0a0a2e', '#87ceeb', f);
+  } else if (t < 0.5) { // day
+    return '#87ceeb';
+  } else if (t < 0.7) { // dusk
+    const f = (t - 0.5) / 0.2;
+    return lerpColor('#87ceeb', '#0a0a2e', f);
+  } else { // night
+    return '#0a0a2e';
+  }
+}
+
+function getDarkness(t) {
+  if (t < 0.2) return 1 - t / 0.2;
+  if (t < 0.5) return 0;
+  if (t < 0.7) return (t - 0.5) / 0.2;
+  return 1;
+}
+
+function parseColor(c) {
+  if (c.startsWith('#')) {
+    let hex = c.slice(1);
+    if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+    return [parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)];
+  }
+  const m = c.match(/(\d+)/g);
+  if (m) return [Number(m[0]), Number(m[1]), Number(m[2])];
+  return [0, 0, 0];
+}
+function lerpColor(a, b, t) {
+  const [ar, ag, ab] = parseColor(a);
+  const [br, bg, bb] = parseColor(b);
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function render() {
+  const tod = getTimeOfDay();
+  const sky = getSkyColor(tod);
+  const darkness = getDarkness(tod);
+
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, sky);
+  grad.addColorStop(1, lerpColor(sky, '#000000', 0.3));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Stars at night
+  if (darkness > 0.5) {
+    ctx.fillStyle = `rgba(255,255,255,${(darkness - 0.5) * 2})`;
+    for (let i = 0; i < 80; i++) {
+      const sx = ((i * 137 + 43) * 7919) % canvas.width;
+      const sy = ((i * 251 + 97) * 3571) % (canvas.height * 0.6);
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+  }
+
+  // Sun/Moon
+  const sunAngle = tod * Math.PI * 2 - Math.PI / 2;
+  const sunX = canvas.width / 2 + Math.cos(sunAngle) * canvas.width * 0.4;
+  const sunY = canvas.height * 0.4 + Math.sin(sunAngle) * canvas.height * 0.35;
+  if (tod < 0.5) {
+    // Sun
+    ctx.fillStyle = '#ffdd00';
+    ctx.beginPath(); ctx.arc(sunX, sunY, 30, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,221,0,0.2)';
+    ctx.beginPath(); ctx.arc(sunX, sunY, 50, 0, Math.PI * 2); ctx.fill();
+  } else {
+    // Moon
+    const moonX = canvas.width / 2 + Math.cos(sunAngle + Math.PI) * canvas.width * 0.4;
+    const moonY = canvas.height * 0.4 + Math.sin(sunAngle + Math.PI) * canvas.height * 0.35;
+    ctx.fillStyle = '#ddeeff';
+    ctx.beginPath(); ctx.arc(moonX, moonY, 22, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(-camera.x, -camera.y);
+
+  // Determine visible blocks
+  const startX = Math.max(0, Math.floor(camera.x / BLOCK) - 1);
+  const startY = Math.max(0, Math.floor(camera.y / BLOCK) - 1);
+  const endX = Math.min(WORLD_W, Math.ceil((camera.x + canvas.width) / BLOCK) + 1);
+  const endY = Math.min(WORLD_H, Math.ceil((camera.y + canvas.height) / BLOCK) + 1);
+
+  // Background (back wall hint)
+  for (let bx = startX; bx < endX; bx++) {
+    for (let by = startY; by < endY; by++) {
+      const block = getBlock(bx, by);
+      if (block === B.AIR) {
+        // Check if underground
+        let surfaceY = 0;
+        for (let sy = 0; sy < WORLD_H; sy++) {
+          if (getBlock(bx, sy) !== B.AIR && getBlock(bx, sy) !== B.LEAVES) {
+            surfaceY = sy; break;
+          }
+        }
+        if (by > surfaceY) {
+          ctx.fillStyle = 'rgba(50,40,30,0.3)';
+          ctx.fillRect(bx * BLOCK, by * BLOCK, BLOCK, BLOCK);
+        }
+      }
+    }
+  }
+
+  // Render blocks
+  for (let bx = startX; bx < endX; bx++) {
+    for (let by = startY; by < endY; by++) {
+      const block = getBlock(bx, by);
+      if (block === B.AIR) continue;
+      const tex = renderBlockTexture(block);
+      if (tex) {
+        ctx.drawImage(tex, bx * BLOCK, by * BLOCK, BLOCK, BLOCK);
+      }
+    }
+  }
+
+  // Block highlight
+  const playerCenterX = (player.x + player.w / 2) / BLOCK;
+  const playerCenterY = (player.y + player.h / 2) / BLOCK;
+  const dist = Math.hypot(mouseWorldX - playerCenterX, mouseWorldY - playerCenterY);
+  if (dist <= REACH && mouseWorldX >= 0 && mouseWorldX < WORLD_W && mouseWorldY >= 0 && mouseWorldY < WORLD_H) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(mouseWorldX * BLOCK, mouseWorldY * BLOCK, BLOCK, BLOCK);
+
+    // Mining progress
+    if (player.miningProgress > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${player.miningProgress * 0.6})`;
+      ctx.fillRect(mouseWorldX * BLOCK, mouseWorldY * BLOCK, BLOCK, BLOCK);
+      // Crack pattern
+      const cracks = Math.floor(player.miningProgress * 5);
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.lineWidth = 1;
+      for (let c = 0; c < cracks; c++) {
+        const cx0 = mouseWorldX * BLOCK + BLOCK / 2;
+        const cy0 = mouseWorldY * BLOCK + BLOCK / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx0, cy0);
+        ctx.lineTo(cx0 + (Math.sin(c * 2.5) * BLOCK * 0.5),
+                   cy0 + (Math.cos(c * 3.1) * BLOCK * 0.5));
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Player
+  drawPlayer();
+
+  ctx.restore();
+
+  // Night overlay
+  if (darkness > 0) {
+    ctx.fillStyle = `rgba(0,0,20,${darkness * 0.45})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Torch glow (simple)
+    ctx.save();
+    ctx.translate(-camera.x, -camera.y);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let bx = startX; bx < endX; bx++) {
+      for (let by = startY; by < endY; by++) {
+        if (getBlock(bx, by) === B.TORCH) {
+          const grd = ctx.createRadialGradient(
+            bx * BLOCK + BLOCK / 2, by * BLOCK + BLOCK / 2, 0,
+            bx * BLOCK + BLOCK / 2, by * BLOCK + BLOCK / 2, BLOCK * 4
+          );
+          grd.addColorStop(0, `rgba(255,180,50,${darkness * 0.4})`);
+          grd.addColorStop(1, 'rgba(255,180,50,0)');
+          ctx.fillStyle = grd;
+          ctx.fillRect(bx * BLOCK - BLOCK * 4, by * BLOCK - BLOCK * 4, BLOCK * 9, BLOCK * 9);
+        }
+      }
+    }
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Debug info
+  const debugDiv = document.getElementById('debug-info');
+  const fps = Math.round(1000 / (performance.now() - (window._lastFrame || performance.now())));
+  window._lastFrame = performance.now();
+  debugDiv.innerHTML = `
+    <b>2D Minecraft</b> | Seed: ${SEED}<br>
+    FPS: ${fps} | Pos: ${Math.floor(player.x / BLOCK)}, ${Math.floor(player.y / BLOCK)}<br>
+    Block: ${BLOCK_INFO[getBlock(mouseWorldX, mouseWorldY)]?.name || 'Air'}
+  `;
+
+  // Health
+  updateHealthUI();
+}
+
+function drawPlayer() {
+  const px = player.x, py = player.y;
+  const f = player.facing;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(px - 2, py + player.h, player.w + 4, 4);
+
+  ctx.save();
+  if (f === -1) {
+    ctx.translate(px + player.w / 2, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-(px + player.w / 2), 0);
+  }
+
+  // Legs
+  const walkCycle = (keys['KeyA'] || keys['KeyD'] || keys['ArrowLeft'] || keys['ArrowRight'])
+    ? Math.sin(Date.now() * 0.01) * 4 : 0;
+  ctx.fillStyle = '#1a3a8a';
+  ctx.fillRect(px + 3, py + 36, 7, 20);
+  ctx.fillRect(px + 12, py + 36, 7, 20);
+
+  // Body
+  ctx.fillStyle = '#4a8';
+  ctx.fillRect(px + 2, py + 20, 18, 18);
+
+  // Arms
+  ctx.fillStyle = '#c8a882';
+  ctx.save();
+  ctx.translate(px + 20, py + 22);
+  ctx.rotate(Math.sin(Date.now() * 0.008) * 0.3 + (mouse.left ? -0.8 : 0));
+  ctx.fillRect(0, 0, 6, 16);
+  ctx.restore();
+  ctx.fillRect(px - 4, py + 22 + walkCycle, 6, 14);
+
+  // Head
+  ctx.fillStyle = '#c8a882';
+  ctx.fillRect(px + 3, py, 16, 18);
+
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(px + 9, py + 7, 4, 4);
+  ctx.fillRect(px + 14, py + 7, 4, 4);
+  ctx.fillStyle = '#2a1a0a';
+  ctx.fillRect(px + 11, py + 8, 2, 3);
+  ctx.fillRect(px + 16, py + 8, 2, 3);
+
+  // Hair
+  ctx.fillStyle = '#4a2a0a';
+  ctx.fillRect(px + 2, py, 18, 6);
+  ctx.fillRect(px + 2, py + 4, 4, 6);
+
+  ctx.restore();
+}
+
+// ── UI Updates ─────────────────────────────────────────────
+function updateHotbarUI() {
+  const hotbar = document.getElementById('hotbar');
+  hotbar.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const slot = document.createElement('div');
+    slot.className = `hotbar-slot${i === selectedSlot ? ' selected' : ''}`;
+    slot.onclick = () => { selectedSlot = i; updateHotbarUI(); };
+
+    const keyLabel = document.createElement('span');
+    keyLabel.className = 'slot-key';
+    keyLabel.textContent = i + 1;
+    slot.appendChild(keyLabel);
+
+    if (inventory[i]) {
+      const tex = renderBlockTexture(inventory[i].block);
+      if (tex) {
+        const c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        c.getContext('2d').drawImage(tex, 0, 0, 32, 32);
+        slot.appendChild(c);
+      }
+      const count = document.createElement('span');
+      count.className = 'slot-count';
+      count.textContent = inventory[i].count;
+      slot.appendChild(count);
+    }
+    hotbar.appendChild(slot);
+  }
+}
+
+function updateHealthUI() {
+  const bar = document.getElementById('health-bar');
+  let html = '';
+  for (let i = 0; i < 10; i++) {
+    const hp = player.health - i * 2;
+    if (hp >= 2) html += '<div class="heart">❤️</div>';
+    else if (hp >= 1) html += '<div class="heart">💔</div>';
+    else html += '<div class="heart" style="opacity:0.3">🖤</div>';
+  }
+  bar.innerHTML = html;
+}
+
+function updateInventoryUI() {
+  if (!inventoryOpen) return;
+  const grid = document.getElementById('inventory-grid');
+  grid.innerHTML = '';
+  for (let i = 0; i < 36; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'inv-slot';
+    slot.onclick = () => {
+      // Simple swap with selected hotbar slot
+      if (i < 9) return; // hotbar handled separately
+      [inventory[selectedSlot], inventory[i]] = [inventory[i], inventory[selectedSlot]];
+      updateInventoryUI();
+      updateHotbarUI();
+    };
+    if (inventory[i]) {
+      const tex = renderBlockTexture(inventory[i].block);
+      if (tex) {
+        const c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        c.getContext('2d').drawImage(tex, 0, 0, 32, 32);
+        slot.appendChild(c);
+      }
+      const count = document.createElement('span');
+      count.className = 'slot-count';
+      count.textContent = inventory[i].count;
+      slot.appendChild(count);
+    }
+    grid.appendChild(slot);
+  }
+
+  // Crafting
+  const craftArea = document.getElementById('crafting-area');
+  craftArea.innerHTML = '';
+  RECIPES.forEach(recipe => {
+    // Check if player has ingredients
+    const canCraft = Object.entries(recipe.input).every(([blockType, needed]) => {
+      const total = inventory.reduce((sum, slot) =>
+        sum + (slot && slot.block === Number(blockType) ? slot.count : 0), 0);
+      return total >= needed;
+    });
+
+    const btn = document.createElement('div');
+    btn.className = 'inv-slot';
+    btn.style.border = canCraft ? '2px solid #5f5' : '2px solid #555';
+    btn.style.cursor = canCraft ? 'pointer' : 'default';
+    btn.title = `${Object.entries(recipe.input).map(([b, n]) => `${n}x ${BLOCK_INFO[b].name}`).join(' + ')} → ${recipe.output.count}x ${BLOCK_INFO[recipe.output.block].name}`;
+
+    const tex = renderBlockTexture(recipe.output.block);
+    if (tex) {
+      const c = document.createElement('canvas');
+      c.width = 32; c.height = 32;
+      c.getContext('2d').drawImage(tex, 0, 0, 32, 32);
+      btn.appendChild(c);
+    }
+    const label = document.createElement('span');
+    label.className = 'slot-count';
+    label.textContent = recipe.output.count;
+    btn.appendChild(label);
+
+    if (canCraft) {
+      btn.onclick = () => {
+        // Consume inputs
+        for (const [blockType, needed] of Object.entries(recipe.input)) {
+          let remaining = needed;
+          for (let i = 0; i < 36 && remaining > 0; i++) {
+            if (inventory[i] && inventory[i].block === Number(blockType)) {
+              const take = Math.min(remaining, inventory[i].count);
+              inventory[i].count -= take;
+              remaining -= take;
+              if (inventory[i].count <= 0) inventory[i] = null;
+            }
+          }
+        }
+        addToInventory(recipe.output.block, recipe.output.count);
+        updateInventoryUI();
+        updateHotbarUI();
+        showMessage(`Crafted ${recipe.output.count}x ${BLOCK_INFO[recipe.output.block].name}`);
+      };
+    }
+    craftArea.appendChild(btn);
+  });
+}
+
+let messageTimeout;
+function showMessage(msg) {
+  const el = document.getElementById('message-area');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(messageTimeout);
+  messageTimeout = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── Respawn ────────────────────────────────────────────────
+function respawn() {
+  player.health = player.maxHealth;
+  player.x = WORLD_W / 2 * BLOCK;
+  const sx = Math.floor(WORLD_W / 2);
+  for (let y = 0; y < WORLD_H; y++) {
+    if (getBlock(sx, y) !== B.AIR) {
+      player.y = (y - 3) * BLOCK;
+      break;
+    }
+  }
+  player.vx = 0;
+  player.vy = 0;
+  showMessage('You died! Respawned.');
+}
+
+// ── Game Loop ──────────────────────────────────────────────
+function gameLoop() {
+  if (player.health <= 0) {
+    respawn();
+  }
+  gameTime += 16; // advance day/night cycle
+  if (!inventoryOpen) {
+    updatePlayer();
+    updateBlockInteraction();
+  }
+  updateCamera();
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+// ── Init ───────────────────────────────────────────────────
+updateHotbarUI();
+showMessage('WASD to move, Mouse to mine/place, E for inventory, Scroll to switch slots');
+gameLoop();
+</script>
+</body>
+</html>
