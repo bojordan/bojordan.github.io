@@ -19,18 +19,18 @@ More fun than the game itself: I generated a [12-lesson tutorial](/projects/mine
 
 The lessons build progressively:
 
-1. **Hello, Canvas!** - HTML basics and drawing rectangles
-2. **Colors & Shapes** - Variables, functions, building a character
-3. **The Animation Loop** - The game loop and `requestAnimationFrame`
-4. **Keyboard Controls** - Event listeners and WASD movement
-5. **Gravity & Jumping** - Velocity, acceleration, physics
-6. **A World of Blocks** - 2D arrays and grid rendering
-7. **Collision Detection** - Player vs. block collision
-8. **Scrolling Camera** - Worlds bigger than the screen
-9. **Breaking & Placing Blocks** - Mouse input and world modification
-10. **Inventory System** - Collecting items and hotbar management
-11. **World Generation** - Noise functions and procedural terrain
-12. **The Complete Game** - Day/night, crafting, health, and polish
+1. [**Hello, Canvas!**](/projects/minecraft2d/tutorial/lesson01.html) - HTML basics and drawing rectangles
+2. [**Colors & Shapes**](/projects/minecraft2d/tutorial/lesson02.html) - Variables, functions, building a character
+3. [**The Animation Loop**](/projects/minecraft2d/tutorial/lesson03.html) - The game loop and `requestAnimationFrame`
+4. [**Keyboard Controls**](/projects/minecraft2d/tutorial/lesson04.html) - Event listeners and WASD movement
+5. [**Gravity & Jumping**](/projects/minecraft2d/tutorial/lesson05.html) - Velocity, acceleration, physics
+6. [**A World of Blocks**](/projects/minecraft2d/tutorial/lesson06.html) - 2D arrays and grid rendering
+7. [**Collision Detection**](/projects/minecraft2d/tutorial/lesson07.html) - Player vs. block collision
+8. [**Scrolling Camera**](/projects/minecraft2d/tutorial/lesson08.html) - Worlds bigger than the screen
+9. [**Breaking & Placing Blocks**](/projects/minecraft2d/tutorial/lesson09.html) - Mouse input and world modification
+10. [**Inventory System**](/projects/minecraft2d/tutorial/lesson10.html) - Collecting items and hotbar management
+11. [**World Generation**](/projects/minecraft2d/tutorial/lesson11.html) - Noise functions and procedural terrain
+12. [**The Complete Game**](/projects/minecraft2d/tutorial/lesson12.html) - Day/night, crafting, health, and polish
 
 Every concept is explained with analogies a kid would understand (flip-books for animation, lockers for arrays, light switches for key tracking), and each lesson ends with challenges to encourage experimentation.
 
