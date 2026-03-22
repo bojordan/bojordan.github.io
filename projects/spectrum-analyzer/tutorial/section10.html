@@ -80,21 +80,24 @@ class AudioEngine {
     var isRunning = false
 
     private let engine = AVAudioEngine()
-    private let analyzer = SpectrumAnalyzer(binCount: 48)
+    private var analyzer: SpectrumAnalyzer?
 
     func start() {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
 
+        // Create analyzer with the device's actual sample rate (48000 on most iPhones, not 44100)
+        analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: format.sampleRate)
+
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            guard let self else { return }
+            guard let self, let analyzer = self.analyzer else { return }
 
             guard let channelData = buffer.floatChannelData?[0] else { return }
             let samples = Array(UnsafeBufferPointer(start: channelData,
                                                     count: Int(buffer.frameLength)))
 
             let rms = Self.computeRMS(samples: samples)
-            let (bars, peakHz, note) = self.analyzer.process(buffer: samples)
+            let (bars, peakHz, note) = analyzer.process(buffer: samples)
 
             DispatchQueue.main.async {
                 self.level = Self.normalize(rms)

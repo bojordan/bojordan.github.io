@@ -173,17 +173,21 @@ permalink: /projects/spectrum-analyzer/tutorial/section08
         <h3 id="sample-rate-differences">Sample Rate Differences</h3>
 
         <p>The simulator typically reports a sample rate of 44,100 Hz. A real iPhone often uses
-        <strong>48,000 Hz</strong>. If you had hardcoded 44100 anywhere in your frequency calculations,
-        your spectrum display would be off by about 9%.</p>
+        <strong>48,000 Hz</strong>. This is a real bug we encountered: the <code>SpectrumAnalyzer</code>
+        defaults to 44,100 Hz, and if you don't override it with the actual device rate, every frequency
+        calculation comes out ~8% too low. That's almost a full semitone &mdash; play an A and the app
+        says G#.</p>
 
-        <p>Our code avoids this problem because we query the actual sample rate from the hardware:</p>
+        <p>The fix is in <code>AudioEngine.start()</code>: we query the real rate from the hardware and
+        pass it to the analyzer at creation time:</p>
 
         <pre><code class="language-swift">let format = input.outputFormat(forBus: 0)
-// format.sampleRate is now 48000.0 on most iPhones</code></pre>
+// format.sampleRate is 48000.0 on most iPhones, not 44100
+analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: format.sampleRate)</code></pre>
 
-        <p>The <code>SpectrumAnalyzer</code> receives this value and uses it for all bin-to-frequency
-        conversions. If you ever add new frequency-dependent logic, always derive from the runtime sample
-        rate, never from a constant.</p>
+        <p>The lesson: never hardcode sample rates. Audio hardware varies across devices and can even
+        change at runtime (see Bluetooth, below). Always query <code>format.sampleRate</code> and
+        propagate it to any code that converts between bin indices and frequencies.</p>
 
         <h3 id="bluetooth-headphones">Bluetooth Headphones</h3>
 

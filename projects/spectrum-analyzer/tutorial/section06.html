@@ -49,7 +49,7 @@ struct SpectrumAnalyzer {
 
         <h3 id="public-configuration">Public Configuration</h3>
 
-        <p><code>binCount</code> is the number of bars in our display &mdash; 48 by default. That's enough to show meaningful frequency detail without making each bar too thin on a phone screen. <code>sampleRate</code> matches the audio engine's rate (44,100 Hz is the iOS default). <code>fftSize</code> is 4096 &mdash; the sweet spot we discussed in Section 5.</p>
+        <p><code>binCount</code> is the number of bars in our display &mdash; 48 by default. That's enough to show meaningful frequency detail without making each bar too thin on a phone screen. <code>sampleRate</code> must match the audio hardware's actual rate &mdash; the default of 44,100 Hz is a placeholder; we'll pass the real value from AudioEngine when we wire things together. <code>fftSize</code> is 4096 &mdash; the sweet spot we discussed in Section 5.</p>
 
         <p><code>halfSize</code> is <code>fftSize / 2</code> (2048). We'll use this everywhere &mdash; it's the number of frequency bins the FFT produces.</p>
 
@@ -297,34 +297,62 @@ mutating func analyze(buffer: [Float]) -&gt; AnalysisResult {
         <h2 id="updating-audio-engine">Updating AudioEngine.swift</h2>
         <!-- ============================================================ -->
 
-        <p>The <code>SpectrumAnalyzer</code> struct is pure DSP &mdash; it knows nothing about AVAudioEngine or SwiftUI. To use it, we need to wire it into our existing <code>AudioEngine</code> class. Open <code>AudioEngine.swift</code> and add three new published properties and an analyzer instance:</p>
+        <p>The <code>SpectrumAnalyzer</code> struct is pure DSP &mdash; it knows nothing about AVAudioEngine or SwiftUI. To use it, we need to wire it into our existing <code>AudioEngine</code> class. Open <code>AudioEngine.swift</code> and add three new published properties:</p>
 
         <pre><code class="language-swift">// Add these properties alongside the existing `level` property
 var spectrumBars: [Float] = Array(repeating: 0, count: 48)
 var peakHz: Float = 0
 var peakNote: String = "—"
 
-// Add a private analyzer instance
-private var analyzer = SpectrumAnalyzer()</code></pre>
+// The analyzer is created in start(), once we know the real sample rate
+private var analyzer: SpectrumAnalyzer?</code></pre>
 
-        <p>Then update the audio tap callback to call the analyzer. Inside your existing tap handler, after the RMS/level calculation, add:</p>
+        <p>Notice that <code>analyzer</code> is an optional, not a pre-initialized instance. This is important &mdash; we create it inside <code>start()</code> where we can pass the device's actual sample rate:</p>
 
-        <pre><code class="language-swift">// Inside the tap closure, after computing `level`:
-let samples = Array(UnsafeBufferPointer(start: floatData, count: frameCount))
-var localAnalyzer = self.analyzer
-let result = localAnalyzer.analyze(buffer: samples)
-self.analyzer = localAnalyzer
+        <pre><code class="language-swift">func start() {
+    let input = engine.inputNode
+    let format = input.outputFormat(forBus: 0)
 
-DispatchQueue.main.async {
-    self.spectrumBars = result.bars
-    self.peakHz = result.peakHz
-    self.peakNote = result.peakNote
+    // Create analyzer with the device's actual sample rate
+    analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: format.sampleRate)
+
+    input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+        guard let self, let analyzer = self.analyzer else { return }
+
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let samples = Array(UnsafeBufferPointer(start: channelData,
+                                                count: Int(buffer.frameLength)))
+
+        let rms = Self.computeRMS(samples: samples)
+        let (bars, peakHz, note) = analyzer.process(buffer: samples)
+
+        DispatchQueue.main.async {
+            self.level = Self.normalize(rms)
+            self.spectrumBars = bars
+            self.peakHz = peakHz
+            self.peakNote = note
+        }
+    }
+
+    do {
+        try engine.start()
+        isRunning = true
+    } catch {
+        print("Audio engine failed to start: \(error)")
+    }
 }</code></pre>
 
-        <p>A few things to note here:</p>
+        <div class="callout callout-dsp">
+            <div class="callout-title">The Sample Rate Trap</div>
+            <p>This is a real bug we hit during development. The <code>SpectrumAnalyzer</code> defaults to 44,100 Hz, but <strong>most iPhones actually run at 48,000 Hz</strong>. If you create the analyzer with the wrong sample rate, every frequency calculation is off by about 8% &mdash; almost a full semitone. Play an A4 (440 Hz) and the app reports G#4 instead.</p>
+            <p>The math makes it clear: <code>peakHz = binIndex * sampleRate / fftSize</code>. If <code>sampleRate</code> is 44100 but the real rate is 48000, every computed frequency is multiplied by 44100/48000 = 0.919. That's flat by 1.46 semitones &mdash; enough to land on the wrong note every time.</p>
+            <p>The fix is simple: don't assume the sample rate. Query it from the hardware with <code>format.sampleRate</code> and pass it to the analyzer. This is why we create the analyzer in <code>start()</code> rather than at init time &mdash; the format isn't available until we access the input node.</p>
+        </div>
+
+        <p>A few other things to note about this code:</p>
 
         <ul>
-            <li><strong>The <code>var localAnalyzer</code> dance.</strong> Our <code>SpectrumAnalyzer</code> is a struct with a <code>mutating</code> method (<code>process</code>), and we're inside a closure. Swift won't let you call a mutating method on a captured <code>self</code> property directly. The workaround: copy to a local variable, mutate it, copy it back. This is safe because the tap callback is serialized &mdash; only one buffer at a time.</li>
+            <li><strong><code>guard let self, let analyzer</code></strong> unwraps both the weak self reference and the optional analyzer in one line. If either is nil, we bail.</li>
             <li><strong><code>DispatchQueue.main.async</code></strong> pushes the UI update to the main thread, just like you'd use <code>Dispatcher.Invoke</code> in WPF. SwiftUI requires all state changes to happen on the main thread.</li>
             <li><strong>The existing <code>level</code> property</strong> still works exactly as before. We're augmenting the audio engine, not replacing anything.</li>
         </ul>
