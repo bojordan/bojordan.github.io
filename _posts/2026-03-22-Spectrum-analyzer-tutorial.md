@@ -9,7 +9,7 @@ Long before that, I had brief hopes of getting into music software engineering. 
 
 Now, we have powerful creation tools available to scratch itches. Time is less of a limiting factor. But, in keeping with a new theme, I also care deeping about these creation tools being powerful _educators_, and not just _producers_.
 
-The result is a small Swift/SwiftUI app -- and, most importantly, tutorial -- that does real-time FFT analysis and displays 48 animated frequency bars with musical note detection. Four files, about 200 lines of code. It runs on an iPhone and it feels like magic when you sing into it and watch the bars dance. There will also be a Mac verison, because I need to tune guitars at my desk, too.
+The result is a small Swift/SwiftUI app -- and, most importantly, tutorial -- that does real-time FFT analysis and displays 48 animated frequency bars with musical note detection. Four files, about 200 lines of code. It runs on an iPhone and it feels like magic when you sing into it and watch the bars dance. There will also be a Mac verison, because I need to tune guitars at my desk, too. And, in the near future, I hope my wife and kids will be able to use it on their amazing journeys with the violin.
 
 ### The tutorial
 
