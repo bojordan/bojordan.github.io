@@ -1,0 +1,354 @@
+---
+layout: spectrum
+title: "Your First iOS App — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section01
+---
+
+
+        <h1><span class="section-number">1.</span> Your First iOS App &mdash; The Empty Canvas <span class="tag tag-ios">iOS</span></h1>
+
+        <p>Before we touch anything related to audio or DSP, we need a running iOS app. This section walks you through creating an Xcode project, understanding the SwiftUI entry point, learning the basics of SwiftUI layout, and building a static placeholder UI for the VU meter we'll bring to life later.</p>
+
+        <p>If you've spent years in Visual Studio writing C# and XAML, you already know 80% of the concepts here &mdash; they just wear different clothes. Let's translate.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="creating-the-xcode-project">Creating the Xcode Project</h2>
+        <!-- ============================================================ -->
+
+        <p>Open Xcode and choose <strong>File &rarr; New &rarr; Project</strong> (or hit <code>&#8984;&#8679;N</code>). Select the <strong>iOS &rarr; App</strong> template and click Next. Fill in the following:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Product Name</td>
+                    <td><code>VUMeter</code></td>
+                </tr>
+                <tr>
+                    <td>Team</td>
+                    <td>Your Apple ID (or "None" for now)</td>
+                </tr>
+                <tr>
+                    <td>Organization Identifier</td>
+                    <td>Something like <code>com.yourname</code></td>
+                </tr>
+                <tr>
+                    <td>Interface</td>
+                    <td><strong>SwiftUI</strong></td>
+                </tr>
+                <tr>
+                    <td>Language</td>
+                    <td><strong>Swift</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>Click Next, choose a location on disk, and hit Create. Xcode generates a project with a handful of files. Let's map this to what you already know.</p>
+
+        <h3 id="project-structure-rosetta-stone">Project Structure &mdash; The Rosetta Stone</h3>
+
+        <p>Here's how the Xcode project maps to a typical Visual Studio / .NET solution:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Xcode / iOS</th>
+                    <th>Visual Studio / .NET</th>
+                    <th>What It Does</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>VUMeter.xcodeproj</code></td>
+                    <td><code>VUMeter.sln</code></td>
+                    <td>The project/solution file. Contains build settings, targets, file references. You rarely edit it by hand.</td>
+                </tr>
+                <tr>
+                    <td><code>VUMeter/</code> folder</td>
+                    <td>A C# project folder</td>
+                    <td>Contains your source code, assets, and configuration files &mdash; the actual "project."</td>
+                </tr>
+                <tr>
+                    <td><code>VUMeterApp.swift</code></td>
+                    <td><code>Program.cs</code> + <code>App.xaml</code></td>
+                    <td>The app's entry point. Defines what launches when the app starts.</td>
+                </tr>
+                <tr>
+                    <td><code>ContentView.swift</code></td>
+                    <td><code>MainWindow.xaml</code></td>
+                    <td>Your initial view &mdash; the first screen the user sees.</td>
+                </tr>
+                <tr>
+                    <td><code>Assets.xcassets</code></td>
+                    <td>Resources folder</td>
+                    <td>App icons, colors, images. A structured asset catalog.</td>
+                </tr>
+                <tr>
+                    <td><code>Info.plist</code> (auto-generated)</td>
+                    <td><code>App.config</code> / <code>launchSettings.json</code></td>
+                    <td>App metadata: permissions, display name, supported orientations.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>Unlike Visual Studio, Xcode uses a single window for everything: code editor, Interface Builder, debugger, simulator management, and provisioning. It takes a day or two to stop reaching for separate windows. Let it happen.</p>
+        </div>
+
+        <p>One key difference: there's no <code>.csproj</code> equivalent that you manually edit. Xcode manages build configuration through its GUI. You <em>can</em> dig into the underlying <code>project.pbxproj</code> file, but you'll almost never need to &mdash; and if you do, something has gone wrong.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-entry-point">VUMeterApp.swift &mdash; The Entry Point</h2>
+        <!-- ============================================================ -->
+
+        <p>Open <code>VUMeterApp.swift</code>. Xcode generated this for you:</p>
+
+        <pre><code class="language-swift">import SwiftUI
+
+@main
+struct VUMeterApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}</code></pre>
+
+        <p>Six lines. Let's unpack every one of them, because each carries weight.</p>
+
+        <h3 id="import-swiftui"><code>import SwiftUI</code></h3>
+
+        <p>This is Swift's equivalent of <code>using</code> in C#. It pulls in Apple's declarative UI framework. SwiftUI is to iOS what WPF/MAUI is to .NET &mdash; a declarative, data-driven way to define your user interface.</p>
+
+        <h3 id="at-main"><code>@main</code></h3>
+
+        <p>This attribute marks the app's entry point &mdash; exactly like <code>static void Main(string[] args)</code> in a C# console app. There can only be one <code>@main</code> in the entire project. Swift doesn't have a <code>Main</code> method in the traditional sense; instead, <code>@main</code> tells the compiler "start here."</p>
+
+        <h3 id="app-protocol">The <code>App</code> Protocol</h3>
+
+        <p><code>VUMeterApp</code> conforms to the <code>App</code> protocol. In C# terms, think of a protocol as an interface. The <code>App</code> protocol requires a single property: <code>body</code>, which returns a <code>Scene</code>. This is the root of your application's view hierarchy.</p>
+
+        <p>In WPF, your <code>App.xaml</code> defines the <code>StartupUri</code> that points to your main window. Here, the <code>body</code> property does the same job &mdash; it tells SwiftUI what to display.</p>
+
+        <h3 id="scene-and-windowgroup"><code>Scene</code> and <code>WindowGroup</code></h3>
+
+        <p>A <code>Scene</code> is a container for your app's content. <code>WindowGroup</code> is the most common scene type &mdash; it creates a window (on Mac) or a full-screen view (on iPhone). On iPad, it supports multiple windows.</p>
+
+        <p>Inside the <code>WindowGroup</code>, we instantiate <code>ContentView()</code> &mdash; our first and (for now) only screen. This is the SwiftUI equivalent of setting your WPF startup window.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>SwiftUI uses a <strong>struct</strong> for the app, not a class. In Swift, structs are value types (same as C#), but SwiftUI leans heavily on them for views. This is a deliberate design choice &mdash; views are lightweight descriptions of UI, not long-lived objects. SwiftUI recreates them constantly, and structs make that cheap.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="swiftui-fundamentals">SwiftUI Fundamentals for C# Developers</h2>
+        <!-- ============================================================ -->
+
+        <p>Before we build anything, let's cover the three concepts that'll feel new-but-familiar coming from WPF or MAUI.</p>
+
+        <h3 id="layout-stacks">Layout Stacks: VStack, HStack, ZStack</h3>
+
+        <p>SwiftUI has three fundamental layout containers:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>SwiftUI</th>
+                    <th>WPF/MAUI Equivalent</th>
+                    <th>What It Does</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>VStack</code></td>
+                    <td><code>StackPanel Orientation="Vertical"</code></td>
+                    <td>Stacks children top to bottom</td>
+                </tr>
+                <tr>
+                    <td><code>HStack</code></td>
+                    <td><code>StackPanel Orientation="Horizontal"</code></td>
+                    <td>Stacks children left to right</td>
+                </tr>
+                <tr>
+                    <td><code>ZStack</code></td>
+                    <td><code>Grid</code> with overlapping cells / <code>Canvas</code></td>
+                    <td>Stacks children on top of each other (back to front)</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>You nest these freely. A <code>VStack</code> inside an <code>HStack</code> inside a <code>ZStack</code> is completely normal. Unlike WPF's <code>Grid</code> with its row/column definitions, SwiftUI prefers composition over configuration &mdash; you build complex layouts by nesting simple containers.</p>
+
+        <h3 id="modifiers">Modifiers &mdash; The Fluent API</h3>
+
+        <p>In WPF, you set properties on elements: <code>&lt;TextBlock FontSize="24" Foreground="Red" /&gt;</code>. In SwiftUI, you chain <strong>modifiers</strong>:</p>
+
+        <pre><code class="language-swift">Text("Hello")
+    .font(.title)
+    .foregroundStyle(.red)
+    .padding()
+    .background(.black)</code></pre>
+
+        <p>If you've ever used a fluent builder pattern in C# &mdash; like LINQ chains or <code>StringBuilder</code> &mdash; this will feel natural. Each modifier returns a new view wrapping the previous one. Order matters: <code>.padding()</code> before <code>.background()</code> means the background includes the padding. Reverse them, and the padding sits outside the background.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>A common beginner mistake is thinking modifiers <em>mutate</em> the view. They don't. Each modifier wraps the view in a new container. Think of it like <code>new Padding(new Background(new Text("Hello"), .black), 16)</code> &mdash; a Russian nesting doll of lightweight structs.</p>
+        </div>
+
+        <h3 id="state-management"><code>@State</code> &mdash; Reactive State</h3>
+
+        <p>In MVVM with WPF, you'd implement <code>INotifyPropertyChanged</code> (or use <code>[ObservableProperty]</code> with the CommunityToolkit) to make the UI react to data changes. SwiftUI has a built-in equivalent: <code>@State</code>.</p>
+
+        <pre><code class="language-swift">struct CounterView: View {
+    @State private var count = 0
+
+    var body: some View {
+        VStack {
+            Text("Count: \(count)")
+                .font(.largeTitle)
+
+            Button("Increment") {
+                count += 1
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+}</code></pre>
+
+        <p>When <code>count</code> changes, SwiftUI automatically re-renders the view. No manual <code>PropertyChanged</code> calls, no dispatcher, no binding syntax. You mutate the variable, and the UI updates. That's it.</p>
+
+        <p><code>@State</code> is for simple, view-local state &mdash; like a private field in a ViewModel that only one view cares about. We'll encounter <code>@ObservedObject</code> and <code>@StateObject</code> later for shared state across views, but <code>@State</code> is enough for now.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>The <code>body</code> property is a <strong>computed property</strong>, not a stored one. SwiftUI calls it whenever state changes to get a fresh description of the UI. The framework then diffs the old and new descriptions and only updates what changed on screen &mdash; similar to how React's virtual DOM works, or WPF's dependency property system. You describe what the UI <em>should</em> look like; the framework handles the transitions.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="building-the-placeholder">Building the Placeholder UI</h2>
+        <!-- ============================================================ -->
+
+        <p>Now let's build something real. Open <code>ContentView.swift</code> and replace its contents with this:</p>
+
+        <pre><code class="language-swift">import SwiftUI
+
+struct ContentView: View {
+    var body: some View {
+        VStack(spacing: 40) {
+            Text("VU Meter")
+                .font(.largeTitle)
+                .bold()
+
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.green)
+                .frame(width: 80, height: 300)
+
+            Text("-&#x221E; dB")
+                .font(.title2.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            Button("Start") { }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+        }
+        .padding(40)
+    }
+}</code></pre>
+
+        <p>Let's break down what each piece does, because this small example demonstrates most of the SwiftUI patterns you'll use throughout the project.</p>
+
+        <h3 id="the-vstack-container">The VStack Container</h3>
+
+        <p><code>VStack(spacing: 40)</code> creates a vertical stack with 40 points of spacing between each child. The <code>spacing</code> parameter is like setting <code>Margin</code> between children in a WPF <code>StackPanel</code> &mdash; but more convenient because it's uniform and declared once.</p>
+
+        <p>The <code>.padding(40)</code> modifier on the entire <code>VStack</code> adds 40 points of inset on all sides, keeping the content away from the screen edges. This is equivalent to setting <code>Padding="40"</code> on a WPF panel.</p>
+
+        <h3 id="the-title">The Title</h3>
+
+        <p><code>Text("VU Meter")</code> is the SwiftUI equivalent of a <code>TextBlock</code>. The <code>.font(.largeTitle)</code> modifier uses one of Apple's dynamic type sizes &mdash; it automatically adjusts based on the user's accessibility settings. <code>.bold()</code> does what you'd expect.</p>
+
+        <h3 id="the-meter-bar">The Meter Bar (Placeholder)</h3>
+
+        <p><code>RoundedRectangle(cornerRadius: 12)</code> creates a shape &mdash; think of it like a <code>Rectangle</code> in WPF with <code>RadiusX</code>/<code>RadiusY</code> set. The <code>.fill(Color.green)</code> modifier fills it with green, and <code>.frame(width: 80, height: 300)</code> constrains its size.</p>
+
+        <p>Right now this is a static green bar. In later sections, we'll replace it with an animated bar whose height responds to audio input. The green block is our visual anchor &mdash; a promise of what's to come.</p>
+
+        <h3 id="the-db-label">The dB Label</h3>
+
+        <p><code>.font(.title2.monospacedDigit())</code> chains two font modifications: size (<code>.title2</code>) and digit style (<code>.monospacedDigit()</code>). Monospaced digits prevent the label from jittering when numbers change rapidly &mdash; each digit occupies the same width. This matters a lot for audio meters where values update many times per second.</p>
+
+        <p><code>.foregroundStyle(.secondary)</code> applies the system's secondary text color &mdash; a muted gray that works in both light and dark mode.</p>
+
+        <h3 id="the-start-button">The Start Button</h3>
+
+        <p><code>Button("Start") { }</code> creates a button with a label and an empty action closure. The closure (<code>{ }</code>) is where we'll eventually start audio capture. <code>.buttonStyle(.borderedProminent)</code> gives it a filled, rounded appearance &mdash; Apple's recommended style for primary actions. <code>.tint(.green)</code> overrides the default accent color.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>Xcode's <strong>Canvas Preview</strong> (right side of the editor) shows your UI live as you type. If you don't see it, press <code>&#8984;&#8997;P</code> to toggle it. It's like the XAML designer in Visual Studio, but it actually works reliably. You can interact with it, rotate the device, and even change accessibility settings &mdash; all without running the simulator.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="running-in-the-simulator">Running in the Simulator</h2>
+        <!-- ============================================================ -->
+
+        <p>Time to see it run. At the top of the Xcode window, you'll see a device selector (it might say "iPhone 16" or "Any iOS Device"). Click it and choose a simulator &mdash; <strong>iPhone 16</strong> is a good default.</p>
+
+        <p>Press <code>&#8984;R</code> (or click the play button). Xcode will:</p>
+
+        <ol>
+            <li><strong>Compile</strong> your Swift code (this takes a few seconds the first time).</li>
+            <li><strong>Boot</strong> the iOS simulator (a few more seconds the very first time).</li>
+            <li><strong>Install and launch</strong> your app inside the simulator.</li>
+        </ol>
+
+        <p>You should see a centered green rectangle with "VU Meter" above it, a dB label below, and a green "Start" button at the bottom. The button doesn't do anything yet &mdash; tap it, confirm nothing happens, and feel good about that. We'll wire it up in Section 3.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>The iOS Simulator runs actual compiled ARM code (on Apple Silicon Macs) or x86 code (on Intel Macs). It's not an emulator &mdash; it runs your app natively on your Mac's CPU, just with an iOS-like environment wrapping it. This makes it very fast compared to the Android emulator. However, it can't simulate hardware sensors like the microphone with real audio input. For audio work, you'll eventually need a physical device. For now, the simulator is perfect for building our UI.</p>
+        </div>
+
+        <h3 id="common-simulator-issues">Common Issues</h3>
+
+        <p>A few things that trip up developers coming from Visual Studio:</p>
+
+        <ul>
+            <li><strong>"No signing certificate"</strong> &mdash; Go to the project settings (click VUMeter in the file navigator, then the VUMeter target), choose the Signing &amp; Capabilities tab, and select your Apple ID from the Team dropdown. A free Apple ID works for simulator builds.</li>
+            <li><strong>Slow first build</strong> &mdash; The first build downloads and indexes the iOS SDK. Subsequent builds are much faster. Swift's incremental compilation is good, though not as fast as C#'s.</li>
+            <li><strong>Simulator won't boot</strong> &mdash; Try <strong>Window &rarr; Devices and Simulators</strong>, delete the problematic simulator, and create a new one. This is the iOS equivalent of "did you try turning it off and on again."</li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <h2 id="what-we-built">What We Built</h2>
+        <!-- ============================================================ -->
+
+        <p>Let's take stock. In this section you:</p>
+
+        <ul>
+            <li>Created an Xcode project and mapped its structure to a Visual Studio solution.</li>
+            <li>Understood the <code>@main</code> entry point and the <code>App</code> protocol.</li>
+            <li>Learned three SwiftUI fundamentals: layout stacks, modifiers, and <code>@State</code>.</li>
+            <li>Built a static placeholder UI with a title, meter bar, label, and button.</li>
+            <li>Ran the app in the iOS Simulator.</li>
+        </ul>
+
+        <p>The app doesn't do anything yet, and that's the point. We have a clean, running canvas. In Section 2, we'll step away from code entirely and build the conceptual foundation: what sound actually <em>is</em>, how it becomes numbers, and how we'll measure it. Then in Section 3, we'll come back to Xcode and make this meter move.</p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>You should have a running iOS app in the simulator showing a static green bar, a title, a dB label, and a Start button. If you see that, you're ready for Section 2.</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section00">&larr; Previous</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section02">Next &rarr;</a>
+        </nav>

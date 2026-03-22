@@ -1,0 +1,300 @@
+---
+layout: spectrum
+title: "Running on Your iPhone — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section08
+---
+
+
+        <h1><span class="section-number">8.</span> Running on Your iPhone <span class="tag tag-ios">iOS</span></h1>
+
+        <p>Up to this point, we have built and tested everything in the iOS Simulator. That was fine for
+        layout, animation timing, and verifying that our FFT code does not crash. But the simulator has
+        a hard limitation that matters for us: it cannot access the microphone. For an audio app, you
+        need real hardware. This section walks you through every step of getting the spectrum analyzer
+        running on a physical iPhone.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="why-test-on-a-real-device">Why Test on a Real Device</h2>
+
+        <p>There are two reasons, and both are non-negotiable for audio work.</p>
+
+        <p><strong>First: the microphone.</strong> The iOS Simulator has no microphone input. When you
+        install a tap on the audio engine's input node in the simulator, you get silence &mdash; zeroes
+        in every buffer. Your spectrum bars will sit flat at the bottom and your VU meter will not move.
+        You can verify that the code compiles and the UI lays out correctly, but you cannot verify the
+        thing that matters most: that it actually responds to sound.</p>
+
+        <p><strong>Second: performance.</strong> Even on Apple Silicon Macs, the simulator runs your app
+        through a translation layer. The CPU architecture matches (ARM on both sides), but the simulator
+        adds overhead for graphics rendering, thread scheduling, and system framework emulation. For a
+        UI-only app, you would never notice. For an app that processes 4096 audio samples through an FFT
+        dozens of times per second and redraws 48 animated bars in real time, the difference can be
+        meaningful. If your app feels smooth on the simulator, it will feel smooth on device. But if it
+        stutters on the simulator, do not assume it will stutter on hardware &mdash; test before you
+        optimize.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">Coming from Windows</div>
+            <p>In the .NET world, you typically run your app directly on the same machine you develop on.
+            There is no separate "deploy to device" step for desktop apps. iOS development always has this
+            extra step &mdash; your code runs on a different device with a different OS. Think of it like
+            deploying to a remote server, except the server is in your pocket.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="device-setup">Device Setup</h2>
+
+        <p>Getting your iPhone connected to Xcode is straightforward, but there are a few first-time
+        steps.</p>
+
+        <ol>
+            <li><strong>Connect your iPhone via USB</strong> (or USB-C, depending on your phone and Mac).
+            Use the cable that came with your phone. Third-party cables sometimes lack data pins and only
+            charge.</li>
+
+            <li><strong>Select your device in Xcode.</strong> At the top of the Xcode window, next to the
+            Run button, there is a device dropdown. It currently shows a simulator name (like "iPhone 16").
+            Click it, and you should see your physical device listed under a "Devices" section. Select it.
+            If your device does not appear, try unlocking the phone and tapping "Trust" if prompted.</li>
+
+            <li><strong>Add your Apple ID.</strong> The first time you deploy to a device, Xcode needs an
+            Apple ID to sign the app. Go to <strong>Xcode &rarr; Settings &rarr; Accounts</strong> (or
+            <code>&#8984;,</code> then Accounts). Click the <code>+</code> button at the bottom left and
+            sign in with your Apple ID. Any Apple ID works &mdash; you do not need a paid developer
+            account for this.</li>
+
+            <li><strong>Xcode creates a Personal Team.</strong> Once your Apple ID is added, Xcode
+            automatically creates a "Personal Team" provisioning profile. This is a free signing identity
+            that lets you deploy apps to your own devices for development and testing.</li>
+        </ol>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>After the initial USB setup, you can deploy wirelessly. In Xcode, go to
+            <strong>Window &rarr; Devices and Simulators</strong>, select your device, and check
+            "Connect via network." Both Mac and iPhone must be on the same Wi-Fi network. Wireless
+            deployment is slower, but saves you from hunting for a cable every time you want to test.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="developer-mode">Developer Mode (iOS 16+)</h2>
+
+        <p>Starting with iOS 16, Apple added a security gate called Developer Mode. It must be enabled
+        on the device before Xcode can install apps on it. This is a one-time setup.</p>
+
+        <ol>
+            <li>On your iPhone, open <strong>Settings &rarr; Privacy &amp; Security</strong>.</li>
+            <li>Scroll down to <strong>Developer Mode</strong>.</li>
+            <li>Toggle it on.</li>
+            <li>The device will prompt you to restart. Tap Restart.</li>
+            <li>After reboot, confirm the prompt to enable Developer Mode.</li>
+        </ol>
+
+        <p>If you do not see the Developer Mode option, connect your iPhone to Xcode first &mdash; the
+        option sometimes only appears after Xcode has communicated with the device at least once.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">Why this exists</div>
+            <p>Developer Mode is a security measure. It prevents malicious software from being sideloaded
+            onto a stolen device. For end users who never develop apps, it stays off and they never see it.
+            For us, it is a one-time toggle. Once enabled, it stays on across iOS updates.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="code-signing">Code Signing and Provisioning</h2>
+
+        <p>Apple requires every app running on a device to be cryptographically signed. This is how iOS
+        verifies that an app comes from a known source and has not been tampered with. If you have used
+        Authenticode signing on Windows, the concept is similar &mdash; but on iOS, it is mandatory for
+        all apps, not just those you distribute.</p>
+
+        <p>Here is what you need to do in Xcode:</p>
+
+        <ol>
+            <li>In the Project Navigator (left sidebar), click on <strong>VUMeter</strong> (the project,
+            with the blue icon at the top).</li>
+            <li>Select the <strong>VUMeter</strong> target.</li>
+            <li>Click the <strong>Signing &amp; Capabilities</strong> tab.</li>
+            <li>Check <strong>Automatically manage signing</strong> (it should be on by default).</li>
+            <li>In the <strong>Team</strong> dropdown, select your Personal Team.</li>
+        </ol>
+
+        <p>Xcode handles the rest: it generates a signing certificate, creates a provisioning profile
+        that ties your Apple ID to your device's unique identifier, and embeds it in the app bundle at
+        build time.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Free vs. paid accounts</div>
+            <p>With a free Apple ID, apps you deploy to your device expire after <strong>7 days</strong>.
+            After that, the app will not launch &mdash; you just re-deploy from Xcode. With a paid Apple
+            Developer account ($99/year), apps last a full year. For learning and personal projects, the
+            free tier is perfectly adequate. You only need the paid account if you want to publish to the
+            App Store or use TestFlight.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="microphone-permission-flow">Microphone Permission Flow</h2>
+
+        <p>We set up the <code>NSMicrophoneUsageDescription</code> key in Info.plist back in
+        <a href="/projects/spectrum-analyzer/tutorial/section03">Section 3</a>. Now, when you run the app on a real
+        device and tap Start, here is what happens:</p>
+
+        <ol>
+            <li>Our code calls <code>engine.start()</code>, which triggers the audio engine to access the
+            input node (the microphone).</li>
+            <li>iOS sees that the app has never requested microphone access before.</li>
+            <li>iOS presents a system dialog: <strong>"VUMeter Would Like to Access the Microphone"</strong>,
+            with the description string from Info.plist below it.</li>
+            <li>The user taps <strong>Allow</strong> or <strong>Don't Allow</strong>.</li>
+        </ol>
+
+        <p>If the user taps Allow, audio data flows immediately. The spectrum bars light up. If the user
+        taps Don't Allow, the audio engine still runs, but every buffer contains silence. The app does
+        not crash &mdash; it just has nothing to analyze.</p>
+
+        <p>Our tutorial code handles denial passively (the bars stay flat). A production app should detect
+        the denial and show an explanation, perhaps with a button that opens the app's Settings page. We
+        will discuss that in <a href="/projects/spectrum-analyzer/tutorial/section09">Section 9</a>.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Resetting permissions</div>
+            <p>During development, you will sometimes want to re-test the permission dialog. You cannot
+            trigger it again once the user has responded. To reset: go to <strong>Settings &rarr;
+            VUMeter &rarr; Microphone</strong> on the device and toggle the permission off, then back on.
+            Or delete the app and reinstall it.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="debugging-audio-on-device">Debugging Audio on Device</h2>
+
+        <p>Running audio code on a real iPhone surfaces issues that the simulator hides. Here are the
+        common gotchas and how to handle each one.</p>
+
+        <h3 id="sample-rate-differences">Sample Rate Differences</h3>
+
+        <p>The simulator typically reports a sample rate of 44,100 Hz. A real iPhone often uses
+        <strong>48,000 Hz</strong>. If you had hardcoded 44100 anywhere in your frequency calculations,
+        your spectrum display would be off by about 9%.</p>
+
+        <p>Our code avoids this problem because we query the actual sample rate from the hardware:</p>
+
+        <pre><code class="language-swift">let format = input.outputFormat(forBus: 0)
+// format.sampleRate is now 48000.0 on most iPhones</code></pre>
+
+        <p>The <code>SpectrumAnalyzer</code> receives this value and uses it for all bin-to-frequency
+        conversions. If you ever add new frequency-dependent logic, always derive from the runtime sample
+        rate, never from a constant.</p>
+
+        <h3 id="bluetooth-headphones">Bluetooth Headphones</h3>
+
+        <p>If AirPods (or other Bluetooth headphones) are connected when you start the audio engine, two
+        things can happen:</p>
+
+        <ul>
+            <li>The <strong>sample rate might drop to 16,000 Hz</strong>. Bluetooth audio profiles
+            (especially HFP, the Hands-Free Profile used for calls) use lower sample rates. This
+            drastically reduces your frequency resolution and caps the maximum detectable frequency at
+            8 kHz.</li>
+            <li>The <strong>microphone input might route to the AirPods' mic</strong> instead of the
+            iPhone's built-in mic. The AirPods' mic is optimized for voice, not music, and has a narrow
+            frequency response.</li>
+        </ul>
+
+        <p>For our spectrum analyzer, the simplest fix during development is to disconnect Bluetooth
+        headphones before testing. For a production app, you would configure the <code>AVAudioSession</code>
+        category and mode to control routing behavior.</p>
+
+        <h3 id="silent-mode">Silent Mode</h3>
+
+        <p>The physical mute switch on the side of the iPhone (or the Action button on iPhone 15 Pro and
+        later) controls <strong>audio output only</strong>. It silences ringtones, notifications, and
+        media playback. It does <em>not</em> affect microphone input. Your spectrum analyzer works
+        identically whether the phone is in silent mode or not. This confuses some users &mdash; they
+        expect "silent" to mean "no audio at all" &mdash; but for a recording or analysis app, it is
+        the correct behavior.</p>
+
+        <h3 id="console-output">Console Output</h3>
+
+        <p>When the app is running on a connected device, Xcode's debug console works exactly as it does
+        with the simulator. Any <code>print()</code> statements in your code appear in real time at the
+        bottom of the Xcode window.</p>
+
+        <p>For audio debugging, a useful technique is to temporarily print values from the tap callback:</p>
+
+        <pre><code class="language-swift">input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+    guard let self else { return }
+    guard let channelData = buffer.floatChannelData?[0] else { return }
+
+    // Debug: print the first sample and buffer size
+    print("Sample rate: \(format.sampleRate), frames: \(buffer.frameLength), first: \(channelData[0])")
+
+    // ... rest of processing
+}</code></pre>
+
+        <p>This will flood the console (the tap fires dozens of times per second), but it confirms that
+        audio data is actually flowing and shows you the real sample rate. Remove or comment out the
+        print statements when you are done &mdash; printing from the audio thread adds overhead.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>If the console output scrolls too fast to read, add a frame counter and print every 100th
+            callback: <code>if frameCount % 100 == 0 { print(...) }</code>. At 48 kHz with 4096-sample
+            buffers, the tap fires roughly 12 times per second, so every 100th call prints about once
+            every 8 seconds.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="app-icons">App Icons with SF Symbols</h2>
+
+        <p>Your app works, but it has the default white icon on the home screen. Let's fix that. Apple
+        provides a free symbol library called <strong>SF Symbols</strong> that contains over 5,000
+        vector icons. We can use one as a starting point for our app icon.</p>
+
+        <ol>
+            <li><strong>Download SF Symbols</strong> from
+            <a href="https://developer.apple.com/sf-symbols/">developer.apple.com/sf-symbols</a>. It is
+            a free Mac app.</li>
+
+            <li><strong>Find a good symbol.</strong> Open SF Symbols and search for audio-related icons.
+            Good candidates:
+                <ul>
+                    <li><code>waveform</code> &mdash; a classic audio waveform shape</li>
+                    <li><code>speaker.wave.3.fill</code> &mdash; a speaker with sound waves</li>
+                    <li><code>waveform.path.ecg</code> &mdash; an ECG-style waveform</li>
+                    <li><code>chart.bar.fill</code> &mdash; bar chart (resembles a spectrum)</li>
+                </ul>
+            </li>
+
+            <li><strong>Export as SVG.</strong> Select the symbol, then <strong>File &rarr; Export
+            Symbol</strong>. Choose SVG format.</li>
+
+            <li><strong>Compose at 1024&times;1024.</strong> Open Keynote, Preview, Figma, or any image
+            editor. Create a 1024&times;1024 pixel canvas. Add a background color (dark blue or black
+            works well for an audio app), place the SVG symbol centered, and export as PNG.</li>
+
+            <li><strong>Add to Xcode.</strong> In Xcode, open <code>Assets.xcassets</code> in the Project
+            Navigator. Click <strong>AppIcon</strong>. Drag your 1024&times;1024 PNG into the single icon
+            well.</li>
+        </ol>
+
+        <p>Since Xcode 15, you only need the one 1024&times;1024 image. Xcode automatically generates
+        every required size (180&times;180 for iPhone home screen, 120&times;120 for Spotlight, 60&times;60
+        for Settings, and so on). In older versions of Xcode, you had to provide each size individually
+        &mdash; that tedium is gone.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">Icon design rules</div>
+            <p>iOS app icons must be square with no transparency (the system applies the rounded corners
+            automatically). Do not bake in rounded corners yourself &mdash; they will not align with the
+            system mask and will look wrong. Keep the design simple. At 60&times;60 pixels on the home
+            screen, fine details disappear.</p>
+        </div>
+
+        <p>Build and run again (<code>&#8984;R</code>). Your app now has a proper icon on the device's
+        home screen. It is a small thing, but it makes the project feel real &mdash; this is not a
+        tutorial exercise anymore, it is an app on your phone.</p>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section07">&larr; Previous: Spectrum UI</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section09">Next: Beyond the Tutorial &rarr;</a>
+        </nav>

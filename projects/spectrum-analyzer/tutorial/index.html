@@ -1,0 +1,140 @@
+---
+layout: spectrum
+title: "Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/
+---
+
+        <div class="hero">
+            <h1>Building a Spectrum Analyzer<br>for iPhone</h1>
+            <p class="subtitle">
+                A hands-on tutorial for experienced programmers learning iOS development
+                and audio signal processing from scratch.
+            </p>
+            <div class="tech-stack">
+                <span>Swift</span>
+                <span>SwiftUI</span>
+                <span>AVAudioEngine</span>
+                <span>Accelerate / vDSP</span>
+                <span>FFT</span>
+            </div>
+        </div>
+
+        <div class="arc-label">Getting Started</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section00">
+                    <span class="section-num">0</span>
+                    <div class="section-info">
+                        <div class="title">Preface &amp; Orientation</div>
+                        <div class="desc">What you'll build, prerequisites, C# &rarr; Swift quick reference</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 1 &mdash; The VU Meter</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section01">
+                    <span class="section-num">1</span>
+                    <div class="section-info">
+                        <div class="title">Your First iOS App <span class="tag tag-ios">iOS</span></div>
+                        <div class="desc">Xcode project setup, SwiftUI fundamentals, a static placeholder UI</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section02">
+                    <span class="section-num">2</span>
+                    <div class="section-info">
+                        <div class="title">What Is Sound? <span class="tag tag-dsp">DSP</span></div>
+                        <div class="desc">Sampling, PCM, Nyquist, buffers, RMS, decibels</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section03">
+                    <span class="section-num">3</span>
+                    <div class="section-info">
+                        <div class="title">Capturing Audio on iOS <span class="tag tag-both">Both</span></div>
+                        <div class="desc">AVAudioEngine, mic permissions, AudioEngine.swift, working VU meter</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section04">
+                    <span class="section-num">4</span>
+                    <div class="section-info">
+                        <div class="title">Accelerating the Math <span class="tag tag-both">Both</span></div>
+                        <div class="desc">Apple&rsquo;s Accelerate framework, vDSP, unsafe pointers</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 2 &mdash; The Spectrum Analyzer</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section05">
+                    <span class="section-num">5</span>
+                    <div class="section-info">
+                        <div class="title">The Fourier Transform <span class="tag tag-dsp">DSP</span></div>
+                        <div class="desc">FFT intuition, frequency bins, window functions, size tradeoffs</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section06">
+                    <span class="section-num">6</span>
+                    <div class="section-info">
+                        <div class="title">Building the Spectrum Analyzer <span class="tag tag-both">Both</span></div>
+                        <div class="desc">SpectrumAnalyzer.swift, FFT pipeline, log-spaced bars, note detection</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section07">
+                    <span class="section-num">7</span>
+                    <div class="section-info">
+                        <div class="title">The Spectrum UI <span class="tag tag-ios">iOS</span></div>
+                        <div class="desc">SpectrumView component, dark theme, complete ContentView</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Finishing Up</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section08">
+                    <span class="section-num">8</span>
+                    <div class="section-info">
+                        <div class="title">Running on Your iPhone <span class="tag tag-ios">iOS</span></div>
+                        <div class="desc">Device setup, provisioning, debugging audio, app icons</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section09">
+                    <span class="section-num">9</span>
+                    <div class="section-info">
+                        <div class="title">Beyond the Tutorial <span class="tag tag-both">Both</span></div>
+                        <div class="desc">TestFlight, App Store, better pitch detection, further learning</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/spectrum-analyzer/tutorial/section10">
+                    <span class="section-num">10</span>
+                    <div class="section-info">
+                        <div class="title">Complete Source Code Reference</div>
+                        <div class="desc">All four final source files with cross-references</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="footer">
+            Built while learning iOS development with the help of Claude.<br>
+            Four Swift files. ~200 lines of code. One working spectrum analyzer.
+        </div>

@@ -1,0 +1,438 @@
+---
+layout: spectrum
+title: "What Is Sound? — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section02
+---
+
+
+        <h1><span class="section-number">2.</span> What Is Sound? <span class="tag tag-dsp">DSP</span></h1>
+
+        <p>No code in this section. We're going to build a mental model of sound &mdash; from the physical vibrations in the air all the way to the single floating-point number our app will display on screen. If you've never worked with audio or signals before, this is the section that makes everything else click.</p>
+
+        <p>Every concept here maps directly to code we'll write later. By the end, when you see a buffer of 4096 floats arrive from the microphone, you'll know exactly what those numbers mean and what to do with them.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="sound-as-vibration">Sound as Vibration</h2>
+        <!-- ============================================================ -->
+
+        <p>Sound is pressure waves in air. Something vibrates &mdash; a guitar string, a vocal cord, a speaker cone &mdash; and pushes air molecules back and forth. Those compressions and rarefactions travel outward at about 343 meters per second (at room temperature) and eventually hit your eardrum, which vibrates in sympathy.</p>
+
+        <p>Two properties of these waves matter most to us:</p>
+
+        <ul>
+            <li><strong>Frequency</strong> &mdash; how many times per second the wave completes a full cycle. Measured in Hertz (Hz). Higher frequency = higher pitch. A guitar's open A string vibrates at 440 Hz, meaning the string completes 440 full back-and-forth cycles every second. Middle C on a piano is about 262 Hz. A bass drum might be 60&ndash;80 Hz.</li>
+            <li><strong>Amplitude</strong> &mdash; how far the wave pushes from its resting point. Larger amplitude = louder sound. If frequency is the <em>note</em>, amplitude is the <em>volume</em>.</li>
+        </ul>
+
+        <p>In programmer terms: imagine an array of values oscillating between -1.0 and 1.0. The <em>speed</em> of oscillation is frequency. The <em>distance from zero</em> at the peaks is amplitude. That's sound.</p>
+
+        <div class="diagram">
+Pressure
+    ^
+1.0 |    *  *              *  *
+    |   *    *            *    *
+    |  *      *          *      *
+0.0 |--*--------*--------*--------*----&gt; Time
+    |            *      *          *
+    |             *    *            *
+-1.0|              *  *              *
+
+        &lt;-- one cycle --&gt;
+        <em>frequency</em> = cycles per second (Hz)
+        <em>amplitude</em> = peak distance from 0</div>
+
+        <p>Real-world sound is never a clean sine wave like this. When you speak, dozens of frequencies combine simultaneously &mdash; the fundamental frequency of your voice, its harmonics, the resonances of your mouth and throat. But the principle is the same: it's all waves superimposed on each other.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="digital-audio-sampling">Digital Audio &mdash; Sampling</h2>
+        <!-- ============================================================ -->
+
+        <p>Your iPhone's microphone is a tiny membrane that vibrates with incoming sound. Behind it, a circuit converts that physical vibration into an electrical voltage that rises and falls in the same pattern. So far, we're still in the analog world &mdash; continuous, smooth, infinite detail.</p>
+
+        <p>To get this signal into the digital world where our code can work with it, we need an <strong>Analog-to-Digital Converter (ADC)</strong>. The ADC does something deceptively simple: at regular intervals, it measures the current voltage and writes down a number.</p>
+
+        <p>That's it. That's sampling.</p>
+
+        <p>Each measurement is called a <strong>sample</strong>. The stream of samples is called <strong>PCM audio</strong> &mdash; Pulse Code Modulation. Don't let the name intimidate you. PCM just means "a sequence of numbers representing amplitude values at regular time intervals."</p>
+
+        <div class="diagram">
+Analog signal (continuous)           Digital samples (discrete)
+
+    ~~~~~                              *
+   ~     ~                            * *
+  ~       ~                          *   *
+ ~         ~         ADC            *     *
+~           ~       ----&gt;          *       *
+             ~         ~                    *       *
+              ~       ~                      *     *
+               ~     ~                        *   *
+                ~~~~~                          * *
+                                                *
+
+Smooth, infinite resolution         <em>Fixed-rate snapshots</em>
+                                    Each * is one <em>Float</em> value</div>
+
+        <p>In our app, each sample will be a <code>Float</code> between <strong>-1.0</strong> and <strong>1.0</strong>, where 0.0 is silence (no pressure change), 1.0 is the maximum positive pressure the system can represent, and -1.0 is the maximum negative. This normalized range is standard in audio programming &mdash; it's the equivalent of working with percentages instead of raw pixel values in graphics.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">DSP Concept</div>
+            <p>If you're used to working with integer data types, the float-based range might seem odd. Historically, audio was stored as 16-bit integers (-32768 to 32767), and CD audio still works this way. But modern audio APIs &mdash; including Apple's Core Audio &mdash; use 32-bit floats internally. Floats give you more headroom, no clipping at exact boundaries, and simpler math. When we do <code>sample * sample</code> later, we don't have to worry about integer overflow.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="sample-rates">Sample Rates</h2>
+        <!-- ============================================================ -->
+
+        <p>How often does the ADC take a snapshot? That's the <strong>sample rate</strong>, measured in Hz (samples per second). Two numbers dominate:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Sample Rate</th>
+                    <th>Context</th>
+                    <th>Samples Per Second</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>44,100 Hz</td>
+                    <td>CD quality, some older devices</td>
+                    <td>44,100</td>
+                </tr>
+                <tr>
+                    <td>48,000 Hz</td>
+                    <td>Modern iOS devices, video, professional audio</td>
+                    <td>48,000</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>Why these specific numbers? The answer comes from one of the most important theorems in signal processing.</p>
+
+        <h3 id="nyquist-theorem">The Nyquist-Shannon Sampling Theorem</h3>
+
+        <p>In 1928, Harry Nyquist proved something that seems almost too clean to be true: <strong>to perfectly capture a frequency, you must sample at least twice per cycle.</strong></p>
+
+        <p>Think about it intuitively. If a wave completes one cycle per second (1 Hz), and you only take one sample per second, you might always catch the wave at the same point &mdash; say, always at zero. You'd see a flat line. You'd completely miss the oscillation. But if you sample twice per cycle, you catch the peak and the trough, and that's enough information to reconstruct the wave.</p>
+
+        <p>Humans can hear frequencies from roughly 20 Hz (a deep rumble) to 20,000 Hz (a high-pitched whine that gets harder to hear with age). To capture 20,000 Hz, we need at least 40,000 samples per second. CD audio uses 44,100 Hz &mdash; a bit more than the theoretical minimum to leave room for the hardware anti-aliasing filter (more on that in a moment). 48,000 Hz is even more generous.</p>
+
+        <p>The maximum frequency that a given sample rate can represent is called the <strong>Nyquist frequency</strong>:</p>
+
+        <div class="diagram">
+<em>Nyquist frequency</em> = sampleRate / 2
+
+For 44,100 Hz:  Nyquist = <em>22,050 Hz</em>
+For 48,000 Hz:  Nyquist = <em>24,000 Hz</em></div>
+
+        <p>Both are comfortably above 20 kHz, so both capture the full range of human hearing.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="aliasing">Nyquist Frequency and Aliasing</h2>
+        <!-- ============================================================ -->
+
+        <p>What happens if a frequency <em>above</em> the Nyquist limit sneaks into the signal? Something strange and bad: <strong>aliasing</strong>.</p>
+
+        <p>Imagine a wheel spinning at 25 revolutions per second, filmed at 24 frames per second. To your eyes (via the camera), the wheel appears to rotate slowly <em>backwards</em> at 1 revolution per second. The sampling rate (frame rate) wasn't high enough to capture the true motion, so the high frequency "folded" into a lower, phantom frequency.</p>
+
+        <p>The same thing happens with audio. A 23,000 Hz tone sampled at 44,100 Hz would alias down to a frequency that wasn't in the original signal &mdash; a ghost frequency that corrupts your audio. You'd hear something that wasn't there.</p>
+
+        <div class="diagram">
+Frequency spectrum with aliasing:
+
+    Real signal          |  Ghost (aliased)
+                         |
+    *                    |         *
+   * *                   |        * *
+  *   *                  |       *   *
+ *     *                 |      *     *
+*       *                |     *       *
+--+------+------+--------+------+--------&gt; Frequency
+  0    10kHz  20kHz  <em>Nyquist</em>  fold-back
+                     (22.05kHz)</div>
+
+        <p>In practice, you never have to deal with this manually. The ADC hardware includes an <strong>anti-aliasing filter</strong> &mdash; an analog low-pass filter that removes frequencies above the Nyquist limit <em>before</em> sampling occurs. By the time the data reaches your app, aliasing has already been prevented.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">DSP Concept</div>
+            <p>Aliasing matters more when you're <em>generating</em> or <em>resampling</em> audio in software. If you ever downsample (convert 48 kHz to 22 kHz, for example), you need to apply a digital low-pass filter first, or you'll introduce aliasing yourself. For our spectrum analyzer, which only <em>reads</em> from the microphone, the hardware handles it for us.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="buffers-and-frames">Buffers and Frames</h2>
+        <!-- ============================================================ -->
+
+        <p>Audio doesn't arrive one sample at a time. Imagine if your app received a callback 48,000 times per second, once per sample &mdash; the overhead would be catastrophic. Instead, samples arrive in chunks called <strong>buffers</strong>.</p>
+
+        <p>A buffer is just an array. A buffer of 1024 frames at 48,000 Hz contains 1024 consecutive samples and represents:</p>
+
+        <div class="diagram">
+buffer duration = frames / sampleRate
+
+<em>1024 / 48000 = 0.0213 seconds = ~21 ms</em></div>
+
+        <p>In code, you'll get something like a <code>[Float]</code> with 1024 elements, delivered to your callback function roughly every 21 milliseconds. Process it, return, and wait for the next one.</p>
+
+        <h3 id="buffer-size-tradeoffs">The Buffer Size Tradeoff</h3>
+
+        <p>This is one of the fundamental tradeoffs in audio programming, and it's worth understanding deeply:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Small Buffer (256 frames)</th>
+                    <th>Large Buffer (4096 frames)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Duration</strong></td>
+                    <td>~5 ms</td>
+                    <td>~85 ms</td>
+                </tr>
+                <tr>
+                    <td><strong>Latency</strong></td>
+                    <td>Very low &mdash; great for real-time effects</td>
+                    <td>Higher &mdash; noticeable delay</td>
+                </tr>
+                <tr>
+                    <td><strong>CPU overhead</strong></td>
+                    <td>High &mdash; callback fires ~188 times/sec</td>
+                    <td>Low &mdash; callback fires ~12 times/sec</td>
+                </tr>
+                <tr>
+                    <td><strong>Frequency resolution</strong></td>
+                    <td>Poor &mdash; hard to distinguish low frequencies</td>
+                    <td>Good &mdash; can resolve fine frequency detail</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>For a real-time audio effect (like a guitar pedal app), you need tiny buffers &mdash; the musician can't tolerate 85 ms of delay. For our visual spectrum analyzer, we don't care about latency in the same way. Nobody notices if the meter updates 85 milliseconds after the sound. What we <em>do</em> care about is having enough samples to calculate accurate frequency content.</p>
+
+        <p>We'll use <strong>4096 frames</strong> per buffer. At 48,000 Hz, that's about <strong>85 ms</strong> of audio per chunk &mdash; roughly 12 updates per second. Plenty smooth for a visual display, and enough samples for good frequency analysis when we get to the FFT in later sections.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>If you're thinking "12 updates per second sounds jerky," you're right &mdash; for raw values. In practice, we'll use smoothing (exponential moving average) to interpolate between updates and animate at 60 fps. The data arrives at 12 Hz; the <em>display</em> updates at 60 Hz. This is the same trick game engines use when physics runs at a different rate than rendering.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="rms-measuring-loudness">RMS &mdash; Measuring Loudness</h2>
+        <!-- ============================================================ -->
+
+        <p>We have a buffer of 4096 floats, each between -1.0 and 1.0. How do we turn that into a single number that represents "how loud is it right now"?</p>
+
+        <p>Your first instinct might be to average all the samples. But that won't work. Audio oscillates symmetrically around zero &mdash; for every positive sample, there's a roughly equal negative sample. The average of a perfectly oscillating signal is zero, regardless of how loud it is.</p>
+
+        <p>You could average the <em>absolute values</em>. That works, sort of. But the standard approach in audio engineering is <strong>RMS: Root Mean Square</strong>. It's what VU meters and loudness meters have used for decades, and there's a good reason.</p>
+
+        <h3 id="rms-formula">The Formula</h3>
+
+        <p>RMS has three steps, right there in the name:</p>
+
+        <div class="diagram">
+Given N samples: x[0], x[1], x[2], ... x[N-1]
+
+1. <em>Square</em> each sample:      x[i]&sup2;
+2. Take the <em>Mean</em>:           sum(x[i]&sup2;) / N
+3. Take the square <em>Root</em>:     sqrt( sum(x[i]&sup2;) / N )
+
+                         ___________________________
+                        /  x[0]&sup2; + x[1]&sup2; + ... + x[N-1]&sup2;
+            RMS =      / ────────────────────────────
+                     \/              N</div>
+
+        <p>Why squaring? Two reasons. First, it eliminates the sign problem &mdash; negative samples become positive after squaring. Second, and more importantly, squaring weights larger values more heavily. A few loud peaks contribute more to the RMS than many quiet samples. This matches human perception &mdash; we perceive loudness based on the energy (power) of the signal, and power is proportional to amplitude squared.</p>
+
+        <p>If that's too abstract, think of it this way: RMS is the standard deviation of the signal, assuming a mean of zero (which audio has). If you've ever computed standard deviation in a data pipeline, you've already done RMS.</p>
+
+        <h3 id="rms-typical-values">Typical RMS Values</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Sound</th>
+                    <th>Approximate RMS</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Silence</td>
+                    <td>0.0 (or very close)</td>
+                </tr>
+                <tr>
+                    <td>Quiet room ambiance</td>
+                    <td>0.001 &ndash; 0.005</td>
+                </tr>
+                <tr>
+                    <td>Normal speech</td>
+                    <td>0.01 &ndash; 0.1</td>
+                </tr>
+                <tr>
+                    <td>Loud music close to mic</td>
+                    <td>0.1 &ndash; 0.5</td>
+                </tr>
+                <tr>
+                    <td>Maximum (clipping)</td>
+                    <td>~0.707 (sine wave at full scale)</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>Notice the enormous range. Quiet room to loud music spans two orders of magnitude (0.003 to 0.3 is a 100x difference). This makes RMS awkward to display on a linear scale &mdash; quiet sounds would be invisible. We need a better scale.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="decibels">Decibels &mdash; The Logarithmic Scale</h2>
+        <!-- ============================================================ -->
+
+        <p>Human hearing is logarithmic. Doubling the perceived loudness doesn't require double the amplitude &mdash; it requires about <em>ten times</em> the power. Our ears compress an absolutely enormous dynamic range into a manageable perception of "quiet" to "loud."</p>
+
+        <p>To match this, audio engineers use <strong>decibels (dB)</strong>, a logarithmic unit:</p>
+
+        <div class="diagram">
+<em>dB = 20 * log10(amplitude)</em>
+
+Where amplitude is our RMS value (0.0 to 1.0)</div>
+
+        <p>Let's plug in some values to build intuition:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>RMS Amplitude</th>
+                    <th>Decibels</th>
+                    <th>Meaning</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1.0</td>
+                    <td>0 dB</td>
+                    <td>Full scale &mdash; the loudest representable signal</td>
+                </tr>
+                <tr>
+                    <td>0.5</td>
+                    <td>-6 dB</td>
+                    <td>Half amplitude</td>
+                </tr>
+                <tr>
+                    <td>0.1</td>
+                    <td>-20 dB</td>
+                    <td>One-tenth amplitude</td>
+                </tr>
+                <tr>
+                    <td>0.01</td>
+                    <td>-40 dB</td>
+                    <td>One-hundredth amplitude</td>
+                </tr>
+                <tr>
+                    <td>0.001</td>
+                    <td>-60 dB</td>
+                    <td>One-thousandth amplitude</td>
+                </tr>
+                <tr>
+                    <td>0.0</td>
+                    <td>-&infin; dB</td>
+                    <td>Digital silence</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>Two things to note. First, <strong>0 dB is not silence</strong> &mdash; it's the maximum. This trips up everyone the first time. In digital audio, 0 dB means "the signal is using the full available range." All real signals are negative dB values. This is called <strong>dBFS</strong> (decibels Full Scale).</p>
+
+        <p>Second, <code>log10(0)</code> is negative infinity. Silence = -&infin; dB. In code, we'll need to handle this &mdash; you can't display infinity on screen. We'll clamp it to a practical floor.</p>
+
+        <h3 id="db-to-display">From dB to Display</h3>
+
+        <p>For our VU meter, we need to map a dB value to a position on screen (0.0 to 1.0). We'll define a range of -60 dB to 0 dB. Anything quieter than -60 dB is effectively silence for our purposes. The formula is:</p>
+
+        <div class="diagram">
+<em>normalized = (dB - minDB) / (maxDB - minDB)</em>
+
+Where minDB = -60, maxDB = 0
+
+Example: -20 dB &rarr; (-20 - (-60)) / (0 - (-60)) = 40/60 = <em>0.667</em>
+Example: -60 dB &rarr; (-60 - (-60)) / (0 - (-60)) = 0/60  = <em>0.0</em>
+Example:   0 dB &rarr; (0 - (-60)) / (0 - (-60))   = 60/60 = <em>1.0</em></div>
+
+        <p>Clamp the result to [0, 1], and you have a value you can directly multiply by the meter's height in pixels. Zero means the bar is empty; 1.0 means the bar is full. Simple.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-full-pipeline">The Full Pipeline</h2>
+        <!-- ============================================================ -->
+
+        <p>Let's put everything together. Here's the complete chain from air vibrations to a pixel height on your iPhone screen:</p>
+
+        <div class="diagram">
+  Sound waves         Microphone           ADC             Audio buffer
+  in the air    &rarr;    (membrane     &rarr;   (analog to   &rarr;   [Float] array
+  (pressure)         vibrates)          digital)         of N samples
+
+
+  Audio buffer         RMS               dB conversion      Normalize
+  [0.02, -0.05,  &rarr;  Square each,   &rarr;   20 * log10    &rarr;  (dB - min)
+   0.03, -0.01,     average,             (rms)             / (max - min)
+   ...]              square root
+
+
+  Normalized value     Display
+  <em>0.0 ... 1.0</em>    &rarr;   meter height = value * barHeight
+                       <em>That's our VU meter.</em></div>
+
+        <p>In code, the whole thing is about ten lines of Swift (which we'll write in Section 4). But understanding <em>why</em> those ten lines work &mdash; that's what this section was for.</p>
+
+        <h3 id="concrete-example">A Concrete Example</h3>
+
+        <p>Let's walk through the math with real numbers. Suppose we have a buffer of 8 samples (in reality it's 4096, but the math is identical):</p>
+
+        <div class="diagram">
+Samples: [0.1, -0.15, 0.2, -0.18, 0.12, -0.1, 0.14, -0.11]
+
+<em>Step 1: Square each</em>
+[0.01, 0.0225, 0.04, 0.0324, 0.0144, 0.01, 0.0196, 0.0121]
+
+<em>Step 2: Mean</em>
+sum = 0.161    mean = 0.161 / 8 = 0.020125
+
+<em>Step 3: Square root</em>
+RMS = sqrt(0.020125) = <em>0.1419</em>
+
+<em>Step 4: Convert to dB</em>
+dB = 20 * log10(0.1419) = 20 * (-0.848) = <em>-16.96 dB</em>
+
+<em>Step 5: Normalize (range -60 to 0)</em>
+normalized = (-16.96 - (-60)) / (0 - (-60)) = 43.04 / 60 = <em>0.717</em>
+
+Result: the meter bar fills to <em>71.7%</em> of its height.</div>
+
+        <p>That's a moderately loud signal &mdash; maybe someone talking at a normal volume close to the microphone. The meter would be about two-thirds full. Makes sense.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="looking-ahead">Looking Ahead</h2>
+        <!-- ============================================================ -->
+
+        <p>This section covered the concepts behind a <em>volume</em> meter &mdash; a single bar that goes up and down with loudness. That's what we'll build first (Sections 3&ndash;5). But the tutorial is called "Building a <em>Spectrum</em> Analyzer," and a spectrum analyzer does something much more interesting: it shows <em>which frequencies</em> are present in the sound.</p>
+
+        <p>To do that, we'll need the <strong>FFT (Fast Fourier Transform)</strong>, which takes our buffer of time-domain samples and transforms it into frequency-domain data &mdash; a list of "how much energy is at each frequency." But that comes later. For now, the concepts in this section are the foundation everything else builds on:</p>
+
+        <ul>
+            <li><strong>Samples</strong> are the raw material.</li>
+            <li><strong>Buffers</strong> are how we receive them in manageable chunks.</li>
+            <li><strong>RMS</strong> collapses a buffer into a single loudness measurement.</li>
+            <li><strong>Decibels</strong> put that measurement on a human-friendly scale.</li>
+            <li><strong>Normalization</strong> maps it to pixels on screen.</li>
+        </ul>
+
+        <p>In the next section, we'll go back to Xcode and capture real audio from the iPhone's microphone using Apple's AVAudioEngine API. The buffer of floats we've been talking about will become an actual variable in your code.</p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>You should be able to explain, without looking back: what a sample is, why the sample rate is ~44&ndash;48 kHz, what RMS measures, why we use decibels instead of raw amplitude, and how we map dB to a 0&ndash;1 display value. If any of those are fuzzy, re-read that section &mdash; everything from here forward assumes this foundation.</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section01">&larr; Previous</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section03">Next &rarr;</a>
+        </nav>

@@ -1,0 +1,197 @@
+---
+layout: default
+---
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/swift.min.js"></script>
+
+<style>
+  /* Spectrum Analyzer Tutorial — layout styles
+     Layered on top of the site theme (dark, #282c34 bg) */
+
+  .spectrum-wrap { max-width: 100%; }
+
+  /* ---- Typography ---- */
+  .spectrum-wrap h1 { font-size: 1.75em; margin-bottom: 5px; color: #61afef; }
+  .spectrum-wrap h1 .section-number { color: #d19a66; font-weight: 400; }
+  .spectrum-wrap h2 {
+    font-size: 1.35em; color: #61afef; margin-top: 2.5em; margin-bottom: 0.75em;
+    padding-bottom: 0.3em; border-bottom: 1px solid #3b4043;
+  }
+  .spectrum-wrap h3 { font-size: 1.1em; color: #adbac3; margin-top: 1.75em; margin-bottom: 0.6em; }
+  .spectrum-wrap h4 { font-size: 1em; color: #adbac3; margin-top: 1.25em; margin-bottom: 0.4em; }
+  .spectrum-wrap p { margin-bottom: 0.9em; line-height: 1.7; }
+  .spectrum-wrap ul, .spectrum-wrap ol { padding-left: 25px; margin: 10px 0; }
+  .spectrum-wrap li { margin: 5px 0; line-height: 1.6; }
+  .spectrum-wrap strong { color: #e0e0e4; }
+  .spectrum-wrap hr { border: none; border-top: 1px solid #3b4043; margin: 2.5em 0; }
+
+  /* ---- Code ---- */
+  .spectrum-wrap code {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 0.875em;
+  }
+  .spectrum-wrap :not(pre) > code {
+    background: #21252b; padding: 2px 6px; border-radius: 3px; color: #d19a66;
+  }
+  .spectrum-wrap pre {
+    background: #21252b; border: 1px solid #3b4043; border-radius: 8px;
+    padding: 18px; overflow-x: auto; margin: 15px 0; line-height: 1.5;
+  }
+  .spectrum-wrap pre code {
+    background: none; padding: 0; color: #adbac3; display: block;
+  }
+  .spectrum-wrap .hljs { background: transparent !important; padding: 0 !important; }
+
+  /* ---- Track tags ---- */
+  .spectrum-wrap .tag {
+    display: inline-block; font-size: 0.7em; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 0.15em 0.6em; border-radius: 4px; vertical-align: middle; margin-left: 0.4em;
+  }
+  .spectrum-wrap .tag-ios  { background: #3b82f615; color: #3b82f6; border: 1px solid #3b82f6; }
+  .spectrum-wrap .tag-dsp  { background: #f59e0b15; color: #f59e0b; border: 1px solid #f59e0b; }
+  .spectrum-wrap .tag-both { background: #a855f715; color: #a855f7; border: 1px solid #a855f7; }
+
+  /* ---- Callout boxes ---- */
+  .spectrum-wrap .callout {
+    border-radius: 8px; padding: 15px 20px; margin: 20px 0; border-left: 4px solid;
+  }
+  .spectrum-wrap .callout-title {
+    font-weight: 700; font-size: 0.85em; text-transform: uppercase;
+    letter-spacing: 0.04em; margin-bottom: 0.4em;
+  }
+  .spectrum-wrap .callout-ios  { background: #21252b; border-color: #3b82f6; }
+  .spectrum-wrap .callout-ios .callout-title { color: #3b82f6; }
+  .spectrum-wrap .callout-dsp  { background: #21252b; border-color: #f59e0b; }
+  .spectrum-wrap .callout-dsp .callout-title { color: #f59e0b; }
+  .spectrum-wrap .callout-both { background: #21252b; border-color: #a855f7; }
+  .spectrum-wrap .callout-both .callout-title { color: #a855f7; }
+  .spectrum-wrap .callout-tip  { background: #21252b; border-color: #61afef; }
+  .spectrum-wrap .callout-tip .callout-title { color: #61afef; }
+
+  /* ---- Diagram / ASCII art ---- */
+  .spectrum-wrap .diagram {
+    background: #21252b; border: 1px solid #3b4043; border-radius: 8px;
+    padding: 18px; margin: 15px 0;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 0.85em; line-height: 1.6; white-space: pre; overflow-x: auto;
+    color: #9da7b3;
+  }
+  .spectrum-wrap .diagram em { color: #61afef; font-style: normal; }
+
+  /* ---- Tables ---- */
+  .spectrum-wrap table { border-collapse: collapse; margin: 15px 0; width: 100%; font-size: 0.9em; }
+  .spectrum-wrap th, .spectrum-wrap td { border: 1px solid #3b4043; padding: 8px 14px; text-align: left; }
+  .spectrum-wrap th { background: #21252b; color: #61afef; font-weight: 600; }
+  .spectrum-wrap tr:hover td { background: #21252b; }
+
+  /* ---- Checkpoint ---- */
+  .spectrum-wrap .checkpoint {
+    background: #21252b; border: 1px solid #61afef40; border-radius: 8px;
+    padding: 20px; margin: 25px 0;
+  }
+  .spectrum-wrap .checkpoint-title { font-weight: 700; color: #61afef; margin-bottom: 0.4em; }
+
+  /* ---- Section navigation ---- */
+  .spectrum-wrap .section-nav {
+    display: flex; justify-content: space-between; margin: 35px 0 10px;
+    padding-top: 20px; border-top: 1px solid #3b4043;
+  }
+  .spectrum-wrap .section-nav a {
+    color: #d19a66; text-decoration: none; padding: 10px 18px;
+    background: #21252b; border-radius: 6px; font-size: 0.9em;
+  }
+  .spectrum-wrap .section-nav a:hover { background: #2c313a; }
+
+  /* ---- Index page styles ---- */
+  .spectrum-wrap .hero { text-align: center; margin-bottom: 2.5em; }
+  .spectrum-wrap .hero h1 { font-size: 1.75em; margin-bottom: 0.5em; }
+  .spectrum-wrap .hero .subtitle { color: #9da7b3; font-size: 1.05em; margin-bottom: 1.5em; }
+  .spectrum-wrap .hero .tech-stack { display: flex; gap: 0.6em; justify-content: center; flex-wrap: wrap; }
+  .spectrum-wrap .hero .tech-stack span {
+    font-size: 0.8em; padding: 0.25em 0.7em; border-radius: 999px; border: 1px solid #3b4043; color: #9da7b3;
+  }
+  .spectrum-wrap .arc-label {
+    color: #d19a66; font-size: 0.85em; text-transform: uppercase;
+    letter-spacing: 2px; margin: 30px 0 12px; font-weight: bold;
+    padding-bottom: 8px; border-bottom: 1px solid #3b4043;
+  }
+  .spectrum-wrap .section-list { list-style: none; padding: 0; }
+  .spectrum-wrap .section-list li { margin: 8px 0; }
+  .spectrum-wrap .section-list a {
+    display: flex; align-items: baseline; gap: 15px;
+    padding: 14px 18px; background: #21252b; border-radius: 10px;
+    color: #adbac3; text-decoration: none; transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .spectrum-wrap .section-list a:hover { background: #2c313a; border-color: #61afef; transform: translateX(5px); }
+  .spectrum-wrap .section-num {
+    font-family: 'SF Mono', Consolas, monospace; font-size: 0.85em;
+    color: #d19a66; min-width: 1.8em; text-align: right;
+  }
+  .spectrum-wrap .section-info .title { font-weight: bold; font-size: 1.05em; color: #61afef; }
+  .spectrum-wrap .section-info .desc { font-size: 0.85em; color: #9da7b3; margin-top: 3px; }
+  .spectrum-wrap .index-footer {
+    text-align: center; margin-top: 2.5em; padding-top: 1.5em;
+    border-top: 1px solid #3b4043; color: #9da7b3; font-size: 0.85em;
+  }
+
+  /* ---- Inline TOC ---- */
+  .spectrum-wrap .toc-inline {
+    background: #21252b; border-radius: 8px; padding: 15px 20px; margin: 20px 0;
+  }
+  .spectrum-wrap .toc-inline summary {
+    cursor: pointer; color: #61afef; font-weight: 600; font-size: 0.9em;
+  }
+  .spectrum-wrap .toc-inline ul { margin: 10px 0 0; padding-left: 20px; }
+  .spectrum-wrap .toc-inline a { color: #d19a66; font-size: 0.85em; }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 680px) {
+    .spectrum-wrap .section-nav { flex-direction: column; gap: 8px; }
+    .spectrum-wrap .section-nav a { text-align: center; }
+    .spectrum-wrap pre { font-size: 0.8em; padding: 12px; }
+  }
+</style>
+
+<div class="spectrum-wrap">
+{{ content }}
+</div>
+
+<script>
+  // Highlight.js init
+  if (typeof hljs !== 'undefined') {
+    document.querySelectorAll('.spectrum-wrap pre code').forEach(function(block) {
+      hljs.highlightElement(block);
+    });
+  }
+
+  // Auto-generate inline TOC for sections with 4+ h2s
+  (function() {
+    var wrap = document.querySelector('.spectrum-wrap');
+    if (!wrap) return;
+    var headings = wrap.querySelectorAll('h2[id]');
+    if (headings.length < 4) return;
+    var details = document.createElement('details');
+    details.className = 'toc-inline';
+    var summary = document.createElement('summary');
+    summary.textContent = 'On this page';
+    details.appendChild(summary);
+    var ul = document.createElement('ul');
+    headings.forEach(function(h) {
+      var li = document.createElement('li');
+      var a = document.createElement('a');
+      a.href = '#' + h.id;
+      a.textContent = h.textContent;
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    details.appendChild(ul);
+    var h1 = wrap.querySelector('h1');
+    if (h1 && h1.nextSibling) {
+      h1.parentNode.insertBefore(details, h1.nextSibling);
+    }
+  })();
+</script>

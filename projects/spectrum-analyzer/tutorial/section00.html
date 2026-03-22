@@ -1,0 +1,358 @@
+---
+layout: spectrum
+title: "Preface & Orientation — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section00
+---
+
+
+        <h1><span class="section-number">0.</span> Preface &amp; Orientation</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            What we're building, what you'll learn, and how to read this tutorial.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="what-youll-build">What You'll Build</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            By the end of this tutorial you will have a fully working <strong>real-time spectrum analyzer</strong> running on your iPhone (or in the iOS Simulator). The app captures live audio from the device's microphone, performs Fast Fourier Transform analysis on each incoming buffer of samples, and renders the frequency content as a bank of animated bars &mdash; all at 60 frames per second, all in about 400 lines of Swift.
+        </p>
+
+        <div class="diagram">
+  Microphone        Audio Engine         DSP Pipeline           SwiftUI View
+ ┌──────────┐     ┌──────────────┐     ┌───────────────┐     ┌──────────────┐
+ │  ◉ mic   │────▸│ <em>AVAudioEngine</em> │────▸│ <em>FFT → bands</em>   │────▸│ <em>Animated bars</em>│
+ └──────────┘     └──────────────┘     └───────────────┘     └──────────────┘
+   48 kHz PCM       tap callback         window → FFT          GeometryReader
+   float samples    delivers buffers     magnitude → dB        + note labels
+        </div>
+
+        <p>
+            The finished product has a dark-themed UI with green frequency bars that bounce in response to sound, peak-hold indicators that linger at each bar's maximum, and musical note labels beneath each band so you can see which notes are loudest. Clap your hands and watch the high-frequency bars spike. Hum a note and watch the corresponding bar light up.
+        </p>
+
+        <p>
+            We won't build this all at once. The tutorial starts with the simplest possible audio app &mdash; a <strong>VU meter</strong> that shows a single bar representing overall loudness &mdash; and we'll evolve it step by step into the full spectrum analyzer. Each section adds one concept and one visible change to the app. You'll always have something that compiles, runs, and does something interesting.
+        </p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                If you've ever built a WPF or WinForms app that reads audio through NAudio or CSCore, the overall architecture will feel familiar: capture audio on a background thread, crunch numbers, push results to the UI. The Apple APIs have different names, but the shape of the problem is identical.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="what-youll-learn">What You'll Learn</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            This tutorial teaches two subjects in parallel: <strong>iOS app development</strong> and <strong>digital audio / DSP fundamentals</strong>. You don't need prior experience in either. The table below gives you the full map of topics &mdash; don't worry if half of these terms are unfamiliar right now. That's the point.
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th><span class="tag tag-ios">iOS</span> iOS Development</th>
+                    <th><span class="tag tag-dsp">DSP</span> Audio / DSP</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>SwiftUI</strong> &mdash; Apple's declarative UI framework. You describe <em>what</em> the screen should look like, and the framework figures out <em>how</em> to update it.</td>
+                    <td><strong>PCM audio</strong> &mdash; What a microphone actually gives you: a stream of floating-point numbers representing air pressure over time.</td>
+                </tr>
+                <tr>
+                    <td><strong>AVAudioEngine</strong> &mdash; Apple's real-time audio graph. We'll use it to open the mic and tap into the raw sample stream.</td>
+                    <td><strong>RMS &amp; decibels</strong> &mdash; How to turn a buffer of samples into a single "loudness" number, and why we measure in dB instead of linear values.</td>
+                </tr>
+                <tr>
+                    <td><strong>@Observable pattern</strong> &mdash; Swift's built-in mechanism for telling the UI "this data changed, please redraw." The iOS equivalent of <code>INotifyPropertyChanged</code>.</td>
+                    <td><strong>FFT (Fast Fourier Transform)</strong> &mdash; The algorithm that decomposes a chunk of audio into its frequency components. The heart of any spectrum analyzer.</td>
+                </tr>
+                <tr>
+                    <td><strong>GeometryReader</strong> &mdash; A SwiftUI tool for building layouts that adapt to the available screen size. Essential for drawing bars that fill the width evenly.</td>
+                    <td><strong>Window functions</strong> &mdash; A preprocessing step that reduces spectral leakage and makes your FFT output cleaner. We'll use a Hann window.</td>
+                </tr>
+                <tr>
+                    <td><strong>App lifecycle</strong> &mdash; How iOS apps start, go to the background, come back, and handle permissions like microphone access.</td>
+                    <td><strong>Frequency-to-note mapping</strong> &mdash; Converting FFT bin frequencies (Hz) into musical note names (A4 = 440 Hz, etc.).</td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td><strong>Log vs. linear scaling</strong> &mdash; Why human hearing is logarithmic and how that affects the way we display frequency bands.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            Each section focuses primarily on one track or the other, but they're designed to interleave: you'll learn a DSP concept in one section, then immediately apply it in the next section's iOS code. Theory always arrives <em>before</em> the code that uses it, so you're never typing something you don't understand.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="prerequisites">Prerequisites</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            You need surprisingly little to get started:
+        </p>
+
+        <ul>
+            <li>
+                <strong>A Mac with Xcode 15+ installed.</strong> Xcode is free from the Mac App Store. It includes the Swift compiler, the iOS Simulator, Interface Builder, and everything else you need. The download is large (around 12 GB), so start it now if you haven't already.
+            </li>
+            <li>
+                <strong>An Apple ID.</strong> A free-tier Apple ID is enough to run apps in the Simulator. If you want to deploy to a physical iPhone, you can still do that for free with a "Personal Team" provisioning profile &mdash; no paid developer account required for development testing.
+            </li>
+            <li>
+                <strong>Programming experience in any language.</strong> This tutorial assumes you can read code, understand variables, functions, loops, and classes. The examples occasionally reference C# for comparison, but the concepts are universal &mdash; if you know Python, Java, TypeScript, or anything similar, you'll be fine.
+            </li>
+            <li>
+                <strong>No prior Swift, iOS, or DSP knowledge.</strong> We start from zero in all three. Every concept is introduced before it's used, and nothing is hand-waved.
+            </li>
+        </ul>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>
+                If you <em>do</em> want to test with a real iPhone, you'll need a Lightning or USB-C cable and you'll need to enable Developer Mode on the device (Settings &rarr; Privacy &amp; Security &rarr; Developer Mode). The Simulator works perfectly for this tutorial, though &mdash; it can even simulate microphone input on macOS Sonoma and later.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="csharp-swift-reference">C# &rarr; Swift Quick Reference</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            If you're coming from C#, Swift will feel both familiar and slightly alien. The good news: the languages share a surprising amount of DNA. The table below maps the concepts you already know to their Swift equivalents. Bookmark this page &mdash; you'll want to glance back at it during the first few sections.
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>C#</th>
+                    <th>Swift</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>class</code> / <code>struct</code></td>
+                    <td><code>class</code> / <code>struct</code></td>
+                    <td>Same keywords, but Swift structs are <strong>value types</strong> and are used far more heavily than in C#. Most SwiftUI views are structs. Classes are reference types, just like C#.</td>
+                </tr>
+                <tr>
+                    <td><code>int</code>, <code>float</code>, <code>string</code></td>
+                    <td><code>Int</code>, <code>Float</code>, <code>String</code></td>
+                    <td>Capitalized. Swift also has <code>Double</code> (64-bit, the default floating-point type) and <code>Int</code> is 64-bit on modern platforms.</td>
+                </tr>
+                <tr>
+                    <td><code>null</code> / <code>T?</code></td>
+                    <td><code>nil</code> / <code>T?</code></td>
+                    <td>Nearly identical syntax. Swift calls them <strong>Optionals</strong>. You unwrap with <code>if let</code>, <code>guard let</code>, or <code>??</code> (null coalescing, same as C#'s <code>??</code>).</td>
+                </tr>
+                <tr>
+                    <td><code>async</code> / <code>await</code></td>
+                    <td><code>async</code> / <code>await</code></td>
+                    <td>Almost identical semantics. Swift uses structured concurrency with <code>Task { }</code> blocks instead of <code>Task.Run()</code>.</td>
+                </tr>
+                <tr>
+                    <td><code>List&lt;T&gt;</code></td>
+                    <td><code>[T]</code> (Array)</td>
+                    <td>Shorthand syntax. <code>[Int]</code> is an array of integers. Supports <code>.append()</code>, <code>.count</code>, subscript access, and all the usual operations.</td>
+                </tr>
+                <tr>
+                    <td><code>Dictionary&lt;K,V&gt;</code></td>
+                    <td><code>[K: V]</code></td>
+                    <td>Also shorthand. <code>[String: Int]</code> is a dictionary mapping strings to ints.</td>
+                </tr>
+                <tr>
+                    <td><code>(x) =&gt; x + 1</code></td>
+                    <td><code>{ x in x + 1 }</code></td>
+                    <td>Swift closures use <code>{ }</code> braces and <code>in</code> to separate parameters from the body. Trailing closure syntax lets you write <code>.map { $0 + 1 }</code> using shorthand argument names.</td>
+                </tr>
+                <tr>
+                    <td><code>INotifyPropertyChanged</code></td>
+                    <td><code>@Observable</code></td>
+                    <td>One macro replaces all that boilerplate. Decorate a class with <code>@Observable</code> and SwiftUI automatically tracks which properties your view reads.</td>
+                </tr>
+                <tr>
+                    <td>LINQ <code>.Where()</code> / <code>.Select()</code></td>
+                    <td><code>.filter()</code> / <code>.map()</code></td>
+                    <td>Same concepts, different names. Swift's functional collection methods are chainable just like LINQ: <code>items.filter { $0 > 5 }.map { $0 * 2 }</code></td>
+                </tr>
+                <tr>
+                    <td><code>using</code></td>
+                    <td><code>import</code></td>
+                    <td><code>import AVFoundation</code> is the equivalent of <code>using System.Media;</code> &mdash; it brings a framework's types into scope.</td>
+                </tr>
+                <tr>
+                    <td><code>namespace</code></td>
+                    <td><em>(none)</em></td>
+                    <td>Swift doesn't have namespaces. Each module (framework/package) acts as an implicit namespace. Name collisions are resolved with <code>ModuleName.TypeName</code>.</td>
+                </tr>
+                <tr>
+                    <td><code>var</code> / <code>let</code> (C# <code>const</code>)</td>
+                    <td><code>var</code> / <code>let</code></td>
+                    <td>Here's the big cultural shift: in Swift, <strong><code>let</code> is the default</strong>. You use <code>let</code> for anything that won't change, and <code>var</code> only when mutation is needed. Xcode will warn you if you use <code>var</code> for something that never changes.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                Don't try to memorize this table. You'll internalize the mappings naturally as you write code. The biggest mental shift isn't syntax &mdash; it's that Swift leans heavily into value types (<code>struct</code>) and immutability (<code>let</code>) by default. Coming from C# where <code>class</code> is king, this feels backwards at first. Give it a few sections and it'll click.
+            </p>
+        </div>
+
+        <h3 id="a-taste-of-swift">A Taste of Swift</h3>
+
+        <p>
+            Here's a tiny side-by-side to make the syntax feel less foreign. This function takes an array of floating-point audio samples and returns the peak value:
+        </p>
+
+        <p><strong>C#:</strong></p>
+        <pre><code class="language-csharp">float FindPeak(float[] samples)
+{
+    float peak = 0f;
+    foreach (var sample in samples)
+    {
+        var abs = MathF.Abs(sample);
+        if (abs > peak) peak = abs;
+    }
+    return peak;
+}</code></pre>
+
+        <p><strong>Swift:</strong></p>
+        <pre><code class="language-swift">func findPeak(_ samples: [Float]) -> Float {
+    var peak: Float = 0
+    for sample in samples {
+        let abs = abs(sample)
+        if abs > peak { peak = abs }
+    }
+    return peak
+}</code></pre>
+
+        <p>
+            The differences are cosmetic: <code>func</code> instead of a return-type-first declaration, <code>-></code> for the return type, <code>let</code>/<code>var</code> instead of implicit mutability, no semicolons. The logic is character-for-character identical. And in practice, most Swift developers would write this as a one-liner:
+        </p>
+
+        <pre><code class="language-swift">let peak = samples.map { abs($0) }.max() ?? 0</code></pre>
+
+        <p>
+            That <code>$0</code> is Swift's shorthand for "the first argument to this closure" (like a positional lambda parameter). The <code>?? 0</code> provides a default value in case the array is empty and <code>.max()</code> returns <code>nil</code>. You'll see patterns like this throughout the tutorial.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="how-this-tutorial-is-organized">How This Tutorial Is Organized</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            This tutorial uses a <strong>two-track system</strong>. Each section is tagged with one of three labels:
+        </p>
+
+        <ul>
+            <li><span class="tag tag-ios">iOS</span> <strong>Blue sections</strong> teach iOS development concepts &mdash; Xcode, SwiftUI, AVAudioEngine, app lifecycle, and everything platform-specific.</li>
+            <li><span class="tag tag-dsp">DSP</span> <strong>Amber sections</strong> teach audio and DSP theory &mdash; how sound works, what FFT does, window functions, decibel scales, and frequency mapping.</li>
+            <li><span class="tag tag-both">Both</span> <strong>Purple sections</strong> are integration points where we combine a DSP concept with iOS code to add a visible new feature to the app.</li>
+        </ul>
+
+        <p>
+            The tracks are sequenced so that <strong>theory always arrives one section before the code that implements it</strong>. For example, you'll learn what RMS and decibels are (amber DSP section) <em>before</em> we write the Swift code that computes them (purple integration section). This means you'll never be typing code you don't understand &mdash; when you write <code>20 * log10(rms)</code>, you'll already know <em>why</em> the formula looks like that.
+        </p>
+
+        <div class="diagram">
+  Section flow (simplified):
+
+  <em>01 iOS</em>  Create your first Xcode project, run "Hello World"
+     ↓
+  <em>02 iOS</em>  SwiftUI basics — build a simple meter UI
+     ↓
+  <em>03 DSP</em>  What is PCM audio? Samples, rates, and buffers
+     ↓
+  <em>04 Both</em> Capture mic audio with AVAudioEngine → show a live VU meter
+     ↓
+  <em>05 DSP</em>  RMS, decibels, and why linear amplitude is misleading
+     ↓
+  <em>06 Both</em> Convert raw samples to dB → meter now shows real loudness
+     ↓
+     ...and so on, building toward the full spectrum analyzer.
+        </div>
+
+        <p>
+            If you're already comfortable with iOS development and just want the DSP material, you can skim the blue sections. If you've done signal processing before and just want to learn SwiftUI, skim the amber ones. But if both domains are new to you, read everything in order &mdash; the sections are designed to reinforce each other.
+        </p>
+
+        <h3 id="section-structure">What Each Section Looks Like</h3>
+
+        <p>
+            Every section follows a consistent structure:
+        </p>
+
+        <ul>
+            <li><strong>Introduction</strong> &mdash; What we're adding and why it matters.</li>
+            <li><strong>Concept explanation</strong> &mdash; The theory or API knowledge you need.</li>
+            <li><strong>Implementation</strong> &mdash; Step-by-step code changes with explanations.</li>
+            <li><strong>Checkpoint</strong> &mdash; What you should see when you build and run. A concrete "it works when..." statement so you can verify your progress.</li>
+        </ul>
+
+        <p>
+            You'll also encounter three types of callout boxes throughout:
+        </p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>
+                Blue callouts explain iOS-specific details &mdash; platform conventions, Xcode behavior, or Apple framework quirks you should know about.
+            </p>
+        </div>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">DSP Concept</div>
+            <p>
+                Amber callouts explain audio and signal processing concepts &mdash; the math, the intuition, and the "why" behind the formulas.
+            </p>
+        </div>
+
+        <div class="callout callout-both">
+            <div class="callout-title">Integration Point</div>
+            <p>
+                Purple callouts appear where iOS and DSP concepts intersect &mdash; they highlight how a platform feature enables (or constrains) a particular DSP technique.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="getting-the-most-from-this-tutorial">Getting the Most from This Tutorial</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            A few pieces of advice before we start:
+        </p>
+
+        <p>
+            <strong>Type the code, don't copy-paste it.</strong> This sounds tedious, but it's how you build muscle memory for Swift syntax. Xcode's autocomplete will help you along the way, and you'll start to internalize patterns like <code>guard let</code> and trailing closures much faster if your fingers type them out.
+        </p>
+
+        <p>
+            <strong>Run the app after every change.</strong> One of the best things about iOS development is the feedback loop. You can hit <kbd>Cmd</kbd>+<kbd>R</kbd> in Xcode and see your changes in the Simulator within seconds. Use this aggressively. If something looks wrong, you'll catch it immediately instead of accumulating errors across multiple steps.
+        </p>
+
+        <p>
+            <strong>Read the compiler errors.</strong> Swift's compiler is strict but helpful. When it tells you "Value of type 'Float?' must be unwrapped," it's telling you exactly what to fix. Coming from C# where nullability warnings are suggestions, this takes some getting used to &mdash; in Swift, they're hard errors. Embrace that. It means fewer crashes at runtime.
+        </p>
+
+        <p>
+            <strong>Don't skip the DSP sections.</strong> If you've never done signal processing, the FFT section might look intimidating. It's not. We build up from first principles, and you don't need to understand the <em>implementation</em> of FFT to use it effectively. You just need to understand what goes in and what comes out. Think of it like using <code>Dictionary&lt;K,V&gt;</code> without knowing how hash tables work internally.
+        </p>
+
+        <p>
+            Let's build something.
+        </p>
+
+        <!-- ============================================================ -->
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/">&larr; Table of Contents</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section01">Next Section &rarr;</a>
+        </nav>

@@ -1,0 +1,588 @@
+---
+layout: spectrum
+title: "Capturing Audio on iOS — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section03
+---
+
+
+        <h1><span class="section-number">3.</span> Capturing Audio on iOS</h1>
+        <p><span class="tag tag-both">Both</span></p>
+
+        <p>This is the section where things get real. We are going to build a working app — a VU meter that
+        listens to the microphone and displays the volume level in real time. It will not do spectral analysis
+        yet (that comes in Sections 5 and 6), but it establishes the entire audio pipeline: permissions,
+        capture, processing, and display. Every piece we build here carries forward into the final spectrum
+        analyzer.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="ios-audio-architecture">iOS Audio Architecture</h2>
+
+        <p>Apple provides several frameworks for working with audio. The one we care about is
+        <strong>AVFoundation</strong>, specifically the <code>AVAudioEngine</code> class. Here is the
+        mental model:</p>
+
+        <div class="diagram">
+            <pre>
+┌─────────────┐      ┌──────────────────┐      ┌──────────────┐
+│  Microphone  │─────▶│  <em>AVAudioEngine</em>   │─────▶│   Output     │
+│  (hardware)  │      │  (audio graph)   │      │   (speaker)  │
+└─────────────┘      └──────────────────┘      └──────────────┘
+                              │
+                              │ installTap()
+                              ▼
+                     ┌──────────────────┐
+                     │  <em>Your callback</em>  │
+                     │  (process audio) │
+                     └──────────────────┘
+            </pre>
+        </div>
+
+        <p><code>AVAudioEngine</code> is a real-time audio graph — a pipeline of nodes that process audio.
+        The <strong>input node</strong> represents the microphone. The <strong>output node</strong> represents
+        the speaker. You can insert processing nodes between them, but for our purposes we just need to
+        <em>observe</em> what the microphone is picking up.</p>
+
+        <p>The mechanism for observing is called a <strong>tap</strong>. You install a tap on a node, and the
+        engine calls your closure every time a buffer of audio data is ready. That buffer is a chunk of
+        floating-point samples — the raw PCM data we discussed in Section 2.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">Coming from Windows</div>
+            <p>If you have used <code>NAudio</code> or <code>WASAPI</code> on Windows, <code>AVAudioEngine</code>
+            is the equivalent. The difference is that Apple wraps everything in a higher-level graph API.
+            There is no need to manually configure sample rates or buffer formats — the engine negotiates
+            that with the hardware.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="microphone-permissions">Microphone Permissions</h2>
+
+        <p>iOS will not let your app touch the microphone without explicit user consent. This is a two-step
+        process:</p>
+
+        <p><strong>Step 1: Declare intent in Info.plist.</strong> Open your project's <code>Info.plist</code>
+        (or the "Info" tab in your target settings) and add this key:</p>
+
+        <pre><code class="language-swift">// Info.plist key (shown as raw key + value)
+Key:   NSMicrophoneUsageDescription
+Value: "VUMeter needs the microphone to measure audio levels"</code></pre>
+
+        <p>This string is displayed to the user in the system permission dialog. Make it clear and honest.
+        Apple reviews these strings and will reject your app if the description is vague or misleading.</p>
+
+        <p><strong>Step 2: The runtime dialog.</strong> The first time your app calls
+        <code>engine.start()</code> on a node connected to the microphone, iOS presents a system dialog:
+        "VUMeter Would Like to Access the Microphone." The user taps Allow or Don't Allow. If they deny
+        it, the audio engine still starts but delivers silence.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>During development, if you accidentally deny the permission and want to reset it, go to
+            <strong>Settings &rarr; Privacy &amp; Security &rarr; Microphone</strong> on the device (or
+            Simulator), find your app, and toggle it back on. You can also reset all permissions in the
+            Simulator via <strong>Device &rarr; Erase All Content and Settings</strong>.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="building-audioengine">Building AudioEngine.swift &mdash; Phase 1 (VU Meter Only)</h2>
+
+        <p>Create a new Swift file in your project called <code>AudioEngine.swift</code>. This is the first
+        version — it only computes volume level (RMS). We will extend it with FFT and spectrum data in
+        later sections.</p>
+
+        <p>Here is the complete file:</p>
+
+        <pre><code class="language-swift">import AVFoundation
+import Observation
+
+@Observable
+class AudioEngine {
+    var level: Float = 0.0        // 0.0 (silence) to 1.0 (loud)
+    var isRunning = false
+
+    private let engine = AVAudioEngine()
+
+    func start() {
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            let rms = Self.computeRMS(buffer: buffer)
+            let normalized = Self.normalize(rms)
+            DispatchQueue.main.async {
+                self?.level = normalized
+            }
+        }
+
+        do {
+            try engine.start()
+            isRunning = true
+        } catch {
+            print("Audio engine failed to start: \(error)")
+        }
+    }
+
+    func stop() {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        isRunning = false
+        level = 0.0
+    }
+
+    // Root Mean Square — the standard way to measure perceived loudness
+    private static func computeRMS(buffer: AVAudioPCMBuffer) -> Float {
+        guard let channelData = buffer.floatChannelData?[0] else { return 0 }
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return 0 }
+
+        var sum: Float = 0
+        for i in 0..&lt;frameCount {
+            let sample = channelData[i]
+            sum += sample * sample
+        }
+        return sqrt(sum / Float(frameCount))
+    }
+
+    // Map raw RMS to a 0–1 display range
+    private static func normalize(_ rms: Float) -> Float {
+        let db = 20 * log10(max(rms, 1e-6))
+        let minDb: Float = -60
+        let maxDb: Float = 0
+        let clamped = max(minDb, min(maxDb, db))
+        return (clamped - minDb) / (maxDb - minDb)
+    }
+}</code></pre>
+
+        <p>That is about 50 lines of code that captures live audio from the microphone, computes a volume
+        level, and exposes it as a reactive property. Let's walk through every important piece.</p>
+
+        <!-- ============================================================ -->
+        <h3 id="the-observable-pattern">The @Observable Pattern</h3>
+
+        <pre><code class="language-swift">@Observable
+class AudioEngine {
+    var level: Float = 0.0
+    var isRunning = false
+    // ...
+}</code></pre>
+
+        <p><code>@Observable</code> is Swift's equivalent of C#'s <code>INotifyPropertyChanged</code>. When you
+        mark a class with <code>@Observable</code>, the Swift compiler automatically synthesizes change-tracking
+        for every stored property. Any SwiftUI view that reads <code>audio.level</code> will automatically
+        re-render when that value changes.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">C# comparison</div>
+            <p>In WPF/MAUI, you would write a property with a backing field, call
+            <code>OnPropertyChanged()</code> in the setter, and bind to it in XAML. In Swift,
+            <code>@Observable</code> eliminates all of that boilerplate. You just write a normal property
+            and it works. The framework tracks which views read which properties at runtime, not through
+            string-based bindings.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h3 id="installing-a-tap">Installing a Tap</h3>
+
+        <pre><code class="language-swift">let input = engine.inputNode
+let format = input.outputFormat(forBus: 0)
+
+input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+    let rms = Self.computeRMS(buffer: buffer)
+    let normalized = Self.normalize(rms)
+    DispatchQueue.main.async {
+        self?.level = normalized
+    }
+}</code></pre>
+
+        <p><code>installTap(onBus:bufferSize:format:)</code> registers a callback on the audio node. Here is
+        what each parameter means:</p>
+
+        <ul>
+            <li><strong><code>onBus: 0</code></strong> — Audio nodes can have multiple buses (channels of
+            data). Bus 0 is the default, and for the input node, it is the microphone.</li>
+
+            <li><strong><code>bufferSize: 1024</code></strong> — A <em>hint</em> to the engine about how many
+            samples per callback. At 44,100 Hz, 1024 samples is about 23 ms of audio. The engine may deliver
+            a different size — this is a request, not a guarantee. Smaller buffers mean lower latency but
+            more CPU overhead; larger buffers are the opposite.</li>
+
+            <li><strong><code>format</code></strong> — The audio format (sample rate, channels, bit depth).
+            We read it from the node rather than hardcoding, because it depends on the hardware.</li>
+        </ul>
+
+        <p>The trailing closure is your callback. It receives an <code>AVAudioPCMBuffer</code> (the raw
+        samples) and an <code>AVAudioTime</code> (the timestamp, which we ignore with <code>_</code>).
+        This callback fires on a <strong>real-time audio thread</strong> — not the main thread, not a
+        background queue, but a high-priority thread managed by the audio system.</p>
+
+        <!-- ============================================================ -->
+        <h3 id="weak-self-and-retain-cycles">weak self and Retain Cycles</h3>
+
+        <pre><code class="language-swift">{ [weak self] buffer, _ in
+    // ...
+    self?.level = normalized
+}</code></pre>
+
+        <p>The <code>[weak self]</code> capture list is critical. Without it, here is what happens:</p>
+
+        <ol>
+            <li>The closure captures a strong reference to <code>self</code> (the AudioEngine instance).</li>
+            <li>The AudioEngine owns the <code>AVAudioEngine</code>, which owns the tap, which owns the
+            closure.</li>
+            <li>The closure owns the AudioEngine. Circular reference. Memory leak.</li>
+        </ol>
+
+        <p><code>[weak self]</code> makes the closure's reference to <code>self</code> a <em>weak</em>
+        reference — it does not prevent deallocation. If the AudioEngine is deallocated while the tap is
+        still installed, <code>self</code> becomes <code>nil</code>, and the <code>self?.level</code>
+        call safely does nothing.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">C# comparison</div>
+            <p>This is the same concept as <code>WeakReference&lt;T&gt;</code> in C#. In C#, the garbage
+            collector handles most cycles for you, but in Swift (which uses reference counting, not GC),
+            you must break cycles manually. You will see <code>[weak self]</code> in nearly every closure
+            that captures <code>self</code> and might outlive it. It becomes second nature.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h3 id="threading-model">Threading Model</h3>
+
+        <pre><code class="language-swift">DispatchQueue.main.async {
+    self?.level = normalized
+}</code></pre>
+
+        <p>The audio tap callback runs on a real-time audio thread. SwiftUI views must be updated from the
+        main thread. <code>DispatchQueue.main.async</code> dispatches a block of work to the main thread's
+        run loop — it will execute on the next iteration.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">C# comparison</div>
+            <p>This is exactly like <code>Dispatcher.BeginInvoke()</code> in WPF, or
+            <code>MainThread.BeginInvokeOnMainThread()</code> in MAUI. Same concept, slightly different API.
+            In Swift, Grand Central Dispatch (GCD) is the primary concurrency mechanism, and
+            <code>DispatchQueue.main</code> is the queue bound to the main/UI thread.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h3 id="rms-computation">RMS Computation</h3>
+
+        <pre><code class="language-swift">private static func computeRMS(buffer: AVAudioPCMBuffer) -> Float {
+    guard let channelData = buffer.floatChannelData?[0] else { return 0 }
+    let frameCount = Int(buffer.frameLength)
+    guard frameCount > 0 else { return 0 }
+
+    var sum: Float = 0
+    for i in 0..&lt;frameCount {
+        let sample = channelData[i]
+        sum += sample * sample
+    }
+    return sqrt(sum / Float(frameCount))
+}</code></pre>
+
+        <p>This is the theory from Section 2 turned into code. Let's trace through it:</p>
+
+        <ol>
+            <li><strong><code>buffer.floatChannelData?[0]</code></strong> — The buffer stores audio as
+            32-bit floats, one array per channel. <code>[0]</code> grabs channel 0 (mono, or the left channel
+            of stereo). The <code>?</code> is Swift's optional chaining — if the buffer somehow has no float
+            data, the entire expression is <code>nil</code> and the <code>guard</code> returns 0.</li>
+
+            <li><strong>The loop</strong> — For every sample in the buffer:
+                <ul>
+                    <li>Read the sample (a float between roughly -1.0 and 1.0).</li>
+                    <li>Square it. This does two things: makes negative values positive, and emphasizes
+                    louder samples (a sample at 0.5 contributes 0.25, but a sample at 1.0 contributes 1.0 — four
+                    times as much).</li>
+                    <li>Add it to a running sum.</li>
+                </ul>
+            </li>
+
+            <li><strong><code>sum / Float(frameCount)</code></strong> — The <em>mean</em> of the squared
+            values.</li>
+
+            <li><strong><code>sqrt(...)</code></strong> — The <em>root</em> of the mean square. This brings
+            the result back into the same scale as the original samples.</li>
+        </ol>
+
+        <p>The result is a single float — the RMS level — typically between 0.0 (silence) and maybe 0.3
+        for normal speech. Clapping close to the mic might push it to 0.7. It will rarely hit 1.0 unless
+        the input is distorted.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">Why RMS and not peak?</div>
+            <p>You could just take the maximum absolute sample value (the "peak"). But peak is jumpy and
+            does not correspond well to perceived loudness. A single spike sample could max out the peak
+            while the audio sounds quiet. RMS averages over the entire buffer, giving a much more stable
+            and perceptually meaningful reading. This is why professional VU meters use RMS.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h3 id="normalization">Normalization</h3>
+
+        <pre><code class="language-swift">private static func normalize(_ rms: Float) -> Float {
+    let db = 20 * log10(max(rms, 1e-6))
+    let minDb: Float = -60
+    let maxDb: Float = 0
+    let clamped = max(minDb, min(maxDb, db))
+    return (clamped - minDb) / (maxDb - minDb)
+}</code></pre>
+
+        <p>Raw RMS values are not great for display. Normal speech might be 0.01 to 0.05 — you would barely
+        see the meter move. We need to convert to a logarithmic (decibel) scale, then map to 0&ndash;1.</p>
+
+        <ol>
+            <li><strong><code>20 * log10(rms)</code></strong> — Converts amplitude to decibels. An RMS of
+            1.0 is 0 dB (maximum). An RMS of 0.01 is -40 dB. An RMS of 0.001 is -60 dB. The
+            <code>max(rms, 1e-6)</code> guard prevents <code>log10(0)</code>, which would be negative
+            infinity.</li>
+
+            <li><strong>Clamping to [-60, 0]</strong> — We define our display range. Anything below -60 dB
+            is effectively silence; anything above 0 dB is clipping. <code>max(minDb, min(maxDb, db))</code>
+            clamps the value into that range.</li>
+
+            <li><strong>Mapping to 0&ndash;1</strong> — <code>(clamped - minDb) / (maxDb - minDb)</code> is
+            a standard linear interpolation. -60 dB maps to 0.0, 0 dB maps to 1.0, -30 dB maps to 0.5.
+            This is the value we hand to the UI.</li>
+        </ol>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">The decibel scale and human hearing</div>
+            <p>Human hearing is logarithmic — we perceive the difference between -60 dB and -40 dB as
+            roughly the same "jump" as -40 dB to -20 dB, even though in linear terms the second jump is
+            100x larger. By converting to decibels before mapping to the display, our meter moves in a way
+            that matches how we actually hear sound. This is fundamental to every audio meter, VU or
+            otherwise.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="the-vu-meter-ui">The VU Meter UI</h2>
+
+        <p>Now let's build the view. Open <code>ContentView.swift</code> (the file Xcode created for you)
+        and replace its contents with this:</p>
+
+        <pre><code class="language-swift">import SwiftUI
+
+struct ContentView: View {
+    @State private var audio = AudioEngine()
+
+    var body: some View {
+        VStack(spacing: 40) {
+            Text("VU Meter")
+                .font(.largeTitle)
+                .bold()
+
+            GeometryReader { geo in
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.gray.opacity(0.2))
+
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(meterColor(level: audio.level))
+                        .frame(height: geo.size.height * CGFloat(audio.level))
+                        .animation(.easeOut(duration: 0.05), value: audio.level)
+                }
+            }
+            .frame(width: 80, height: 300)
+
+            Text(dbLabel(level: audio.level))
+                .font(.title2.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            Button(audio.isRunning ? "Stop" : "Start") {
+                if audio.isRunning {
+                    audio.stop()
+                } else {
+                    audio.start()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(audio.isRunning ? .red : .green)
+        }
+        .padding(40)
+    }
+
+    func meterColor(level: Float) -> Color {
+        switch level {
+        case 0..&lt;0.6:  return .green
+        case 0.6..&lt;0.85: return .yellow
+        default:       return .red
+        }
+    }
+
+    func dbLabel(level: Float) -> String {
+        let db = (level * 60) - 60
+        if level &lt; 0.001 { return "-&#8734; dB" }
+        return String(format: "%.1f dB", db)
+    }
+}</code></pre>
+
+        <p>This gives us a vertical bar that fills from bottom to top, changes color at threshold levels,
+        displays the current dB reading, and has a start/stop button. Let's break down the key SwiftUI
+        concepts.</p>
+
+        <!-- ============================================================ -->
+        <h3 id="state-and-observable">@State and @Observable</h3>
+
+        <pre><code class="language-swift">@State private var audio = AudioEngine()</code></pre>
+
+        <p><code>@State</code> tells SwiftUI: "own this object's lifecycle." SwiftUI creates the
+        <code>AudioEngine</code> instance when the view first appears and keeps it alive across re-renders.
+        Combined with <code>@Observable</code> on the class, SwiftUI tracks exactly which properties
+        the view's <code>body</code> reads. When <code>audio.level</code> changes, only the parts of the
+        view that depend on <code>level</code> are recomputed — not the entire view tree.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">C# comparison</div>
+            <p>Think of <code>@State</code> as the SwiftUI equivalent of a view model that is scoped to
+            a particular view. In WPF, you would set <code>DataContext = new AudioEngine()</code> and bind
+            properties in XAML. SwiftUI collapses binding, change notification, and lifecycle management
+            into two keywords: <code>@State</code> on the view side, <code>@Observable</code> on the
+            model side.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h3 id="geometry-reader">GeometryReader</h3>
+
+        <pre><code class="language-swift">GeometryReader { geo in
+    ZStack(alignment: .bottom) {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(Color.gray.opacity(0.2))
+
+        RoundedRectangle(cornerRadius: 12)
+            .fill(meterColor(level: audio.level))
+            .frame(height: geo.size.height * CGFloat(audio.level))
+    }
+}
+.frame(width: 80, height: 300)</code></pre>
+
+        <p><code>GeometryReader</code> is SwiftUI's way of giving you access to the parent container's
+        size. The closure receives a <code>GeometryProxy</code> (here called <code>geo</code>) with
+        properties like <code>geo.size.width</code> and <code>geo.size.height</code>.</p>
+
+        <p>We set the outer frame to 80x300 points. Inside, we stack two rounded rectangles with
+        <code>ZStack</code> (a z-axis stack — layers on top of each other). The gray one is the background
+        track. The colored one is the fill, whose height equals the container height times the audio level.
+        When <code>audio.level</code> is 0.5, the colored bar is 150 points tall. When it is 1.0, it fills
+        the whole container.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">C# comparison</div>
+            <p>This is like measuring a WPF <code>Grid</code> or <code>Canvas</code> with
+            <code>ActualWidth</code>/<code>ActualHeight</code> and using those values to size a child
+            element. The difference is that in SwiftUI, <code>GeometryReader</code> is reactive — when
+            the container resizes (say, on device rotation), the inner content automatically recomputes.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h3 id="implicit-animation">Implicit Animation</h3>
+
+        <pre><code class="language-swift">.animation(.easeOut(duration: 0.05), value: audio.level)</code></pre>
+
+        <p>This single modifier makes the meter bar animate smoothly. Whenever <code>audio.level</code>
+        changes, SwiftUI interpolates the frame height from the old value to the new value over 0.05
+        seconds with an ease-out curve. No animation state variables. No timers. No manual interpolation.
+        You declare "animate this property" and the framework handles it.</p>
+
+        <p>The duration of 0.05 seconds (50 ms) is a deliberate choice. Our audio tap fires roughly every
+        23 ms (1024 samples at 44.1 kHz), so 50 ms gives the animation just enough time to smooth out
+        jitter without adding noticeable lag. Try changing it to 0.3 and you will see the meter feel
+        sluggish. Remove it entirely and the meter will stutter.</p>
+
+        <!-- ============================================================ -->
+        <h3 id="pattern-matching">Pattern Matching</h3>
+
+        <pre><code class="language-swift">func meterColor(level: Float) -> Color {
+    switch level {
+    case 0..&lt;0.6:  return .green
+    case 0.6..&lt;0.85: return .yellow
+    default:       return .red
+    }
+}</code></pre>
+
+        <p>Swift's <code>switch</code> can match against ranges, which is something you cannot do directly
+        in C#. The <code>0..<0.6</code> syntax creates a half-open range (includes 0, excludes 0.6).
+        The result: the meter is green up to 60% of maximum, yellow from 60% to 85%, and red above 85%.
+        This mimics the color scheme of classic analog VU meters.</p>
+
+        <p>Also notice that Swift's <code>switch</code> does not fall through by default (no
+        <code>break</code> needed), and the compiler checks exhaustiveness — the <code>default</code>
+        case is required because the compiler cannot prove our ranges cover all possible <code>Float</code>
+        values.</p>
+
+        <h3 id="button-and-conditional-ui">Button and Conditional UI</h3>
+
+        <pre><code class="language-swift">Button(audio.isRunning ? "Stop" : "Start") {
+    if audio.isRunning {
+        audio.stop()
+    } else {
+        audio.start()
+    }
+}
+.buttonStyle(.borderedProminent)
+.tint(audio.isRunning ? .red : .green)</code></pre>
+
+        <p>The button label and tint color both depend on <code>audio.isRunning</code>. When the engine
+        is running, you see a red "Stop" button. When it is stopped, you see a green "Start" button.
+        Because <code>isRunning</code> is a property on an <code>@Observable</code> object, the button
+        automatically re-renders when it changes. No manual state synchronization.</p>
+
+        <p>The <code>.buttonStyle(.borderedProminent)</code> modifier gives us a filled, rounded button
+        — the standard iOS "primary action" style. <code>.tint</code> sets the fill color.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="first-runnable-app">First Runnable App</h2>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>You now have two files: <code>AudioEngine.swift</code> and <code>ContentView.swift</code>.
+            Build and run (&#8984;R). When the app launches, tap <strong>Start</strong>. iOS will present
+            the microphone permission dialog — tap <strong>Allow</strong>.</p>
+
+            <p>You should see the green bar responding to sound in real time. Try:</p>
+            <ul>
+                <li>Speaking at normal volume — the bar should hover around 30-50%.</li>
+                <li>Clapping near the phone — the bar should spike into yellow or red.</li>
+                <li>Playing music from another device — you should see a steady, fluctuating level.</li>
+                <li>Silence — the bar should drop to zero (or near zero).</li>
+            </ul>
+
+            <p><strong>This is a working VU meter.</strong> It is a real audio application capturing live
+            input, computing a meaningful metric, and displaying it with smooth animation. Everything from
+            here builds on top of this foundation.</p>
+        </div>
+
+        <h3 id="experiments">Experiments to Try</h3>
+
+        <p>Before moving on, try these modifications to deepen your understanding:</p>
+
+        <ul>
+            <li><strong>Change <code>bufferSize</code></strong> — Try 512 (lower latency, choppier) and
+            4096 (smoother, more lag). Notice how it affects the meter's responsiveness.</li>
+
+            <li><strong>Adjust <code>minDb</code></strong> — Change -60 to -40. The meter becomes more
+            sensitive (quiet sounds register higher). Change it to -80 and the meter barely moves unless
+            you shout.</li>
+
+            <li><strong>Remove the animation</strong> — Delete the <code>.animation(...)</code> line.
+            The meter still works but looks jittery. The animation smooths out the discrete jumps between
+            buffer callbacks.</li>
+
+            <li><strong>Add a peak indicator</strong> — As a stretch exercise, add a second thin bar that
+            shows the maximum level and slowly decays. This is how most professional meters work — an RMS
+            bar with a peak hold indicator.</li>
+        </ul>
+
+        <div class="callout callout-both">
+            <div class="callout-title">What's next</div>
+            <p>The VU meter computes a single number per buffer. The spectrum analyzer will compute
+            hundreds of numbers — one for each frequency band. But first, in Section 4, we will optimize
+            our math using Apple's Accelerate framework. The hand-written <code>for</code> loop in
+            <code>computeRMS</code> works fine for 1024 samples, but the FFT will need to process thousands
+            of samples many times per second. We need faster tools.</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section02">&larr; Previous: What Is Sound?</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section04">Next: Accelerating the Math &rarr;</a>
+        </nav>

@@ -1,0 +1,329 @@
+---
+layout: spectrum
+title: "The Fourier Transform — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section05
+---
+
+
+        <h1><span class="section-number">5.</span> The Fourier Transform <span class="tag tag-dsp">DSP</span></h1>
+
+        <p>This is the most important section in the entire tutorial. Everything we've built so far &mdash; the VU meter, the decibel conversion, the audio tap &mdash; answers a single question: <em>how loud is it?</em> That's useful, but it's also flat. A whisper and a scream look different on a VU meter. A flute and a trombone playing the same note at the same volume? Identical. The meter can't tell them apart.</p>
+
+        <p>A spectrum analyzer can. It shows you <em>which frequencies</em> are present in the sound and how strong each one is. The mathematical tool that makes this possible is the <strong>Fourier Transform</strong> &mdash; specifically, its fast implementation, the <strong>FFT</strong>. This section is pure theory. No code. We'll implement everything in Section 6. Right now, the goal is to build solid intuition so that when you see the code, every line makes sense.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-key-insight">The Key Insight</h2>
+        <!-- ============================================================ -->
+
+        <p>Think about what a microphone actually gives you. You've been working with it for several sections now: a stream of floating-point numbers, one per sample, arriving 44,100 times per second. Each number represents the air pressure at that instant. When you hum a single note, those numbers form a smooth, repeating wave. Simple enough.</p>
+
+        <p>But what happens when you strum a guitar? Six strings vibrate simultaneously, each at a different frequency. The microphone doesn't give you six separate signals &mdash; it gives you <em>one</em> signal that's the sum of all six vibrations mixed together. Add in the resonance of the guitar body, the harmonics of each string, and the ambient room noise, and you've got a complicated, messy waveform that looks nothing like a clean sine wave.</p>
+
+        <p>The Fourier Transform untangles that mixture. Given N samples in the time domain, it tells you the amplitude of <em>every frequency</em> present in the signal. It decomposes a complex waveform into its individual sinusoidal components &mdash; the pure tones that, when added together, would perfectly reconstruct the original signal.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">DSP Concept</div>
+            <p>The best physical analogy: a prism splits white light into a rainbow of individual colors. The Fourier Transform does the same thing for sound &mdash; it splits a complex audio signal into a rainbow of individual frequencies. White light is a mixture of all visible wavelengths; a guitar chord is a mixture of all audible frequencies produced by the strings. The prism and the FFT both reveal what's hiding inside the mixture.</p>
+        </div>
+
+        <p>This is a genuinely profound idea. Jean-Baptiste Fourier discovered in the early 1800s that <em>any</em> periodic signal &mdash; no matter how complex &mdash; can be represented as a sum of sine waves at different frequencies, amplitudes, and phases. A square wave? It's an infinite series of odd harmonics. A sawtooth wave? All harmonics, diminishing in amplitude. Your voice saying the vowel "ah"? A fundamental frequency plus a specific pattern of harmonics that your vocal tract shapes. The Fourier Transform is the mathematical machinery that finds those components.</p>
+
+        <p>For our purposes, the practical takeaway is simple: feed in a buffer of audio samples, get back a list of "how much energy is at each frequency." That's exactly what a spectrum analyzer needs.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="time-domain-vs-frequency-domain">Time Domain vs Frequency Domain</h2>
+        <!-- ============================================================ -->
+
+        <p>Before and after the FFT, you're looking at the same data &mdash; just from two different perspectives. These perspectives have names.</p>
+
+        <h3 id="time-domain">The Time Domain</h3>
+
+        <p>This is what the microphone captures and what you've been working with so far. The x-axis is time (or sample index), and the y-axis is amplitude &mdash; the instantaneous air pressure at each moment. A buffer of 4096 samples is a time-domain signal. You can see the shape of the waveform, spot loud parts and quiet parts, but you can't easily tell which <em>frequencies</em> are present just by looking at it.</p>
+
+        <h3 id="frequency-domain">The Frequency Domain</h3>
+
+        <p>This is what the FFT produces. The x-axis is frequency (measured in Hz), and the y-axis is magnitude &mdash; how much energy is at that frequency. Instead of "what was the air pressure at sample 1000?", you're asking "how loud is the 440 Hz component?" This is the view that makes spectrum analyzers possible.</p>
+
+        <div class="diagram">
+Time Domain                          Frequency Domain
+
+amplitude                            magnitude
+  |       /\    /\                     |
+  |      /  \  /  \                    |  |        |
+  |     /    \/    \    &mdash;&mdash; <em>FFT</em> &mdash;&mdash;&gt;   |  |     |  |
+  |    /            \                  |  |  |  |  |  |
+  |   /              \                 |  |  |  |  |  |
+  +&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&gt; time     +&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&gt; Hz
+    samples (e.g. 4096)                 bins (e.g. 2048)</div>
+
+        <p>The time-domain view is like watching a stock ticker &mdash; you see the price moving up and down moment by moment. The frequency-domain view is like a portfolio summary &mdash; it tells you how much is invested in each sector. Same underlying data, different lens.</p>
+
+        <p>One critical detail: the transform is <em>reversible</em>. You can go from time domain to frequency domain and back again without losing any information. The FFT doesn't destroy data &mdash; it rearranges it. We only need the forward direction (time to frequency) for a spectrum analyzer, but the inverse FFT is what makes things like equalizers and noise cancellation possible: transform to frequency domain, modify the frequencies you care about, transform back.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="what-the-fft-actually-computes">What the FFT Actually Computes</h2>
+        <!-- ============================================================ -->
+
+        <p>Let's get specific about what goes in and what comes out. The acronym "FFT" stands for <strong>Fast Fourier Transform</strong>. It's not a different transform &mdash; it's just an efficient <em>algorithm</em> for computing the Discrete Fourier Transform (DFT). The DFT is the math; the FFT is a clever shortcut that makes it practical. The naive DFT takes O(N&sup2;) operations. The FFT does it in O(N log N). For N = 4096, that's the difference between ~16 million operations and ~49,000. This is why real-time audio analysis is possible at all.</p>
+
+        <h3 id="input-and-output">Input and Output</h3>
+
+        <p>Here's the concrete picture:</p>
+
+        <ul>
+            <li><strong>Input:</strong> N real-valued samples. For us, that's a buffer of 4096 <code>Float</code> values captured from the microphone. Each value is an audio sample in the range roughly -1.0 to +1.0.</li>
+            <li><strong>Output:</strong> N/2 complex numbers. Each complex number has a real part and an imaginary part. We get 2048 output values, each representing a "frequency bin."</li>
+        </ul>
+
+        <p>Why N/2 and not N? For real-valued input (which audio always is), the output is symmetric around the midpoint. The second half is a mirror image of the first half, so it carries no new information. Implementations typically only return the first N/2 bins.</p>
+
+        <p>Each output is a complex number with real and imaginary components. To get the <strong>magnitude</strong> (how loud that frequency is), you compute <code>sqrt(real&sup2; + imaginary&sup2;)</code>. The <strong>phase</strong> (the timing offset of that frequency component) is <code>atan2(imaginary, real)</code>. For a spectrum analyzer, we only care about magnitude &mdash; phase is irrelevant for visualization.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>If complex numbers make your eyes glaze over, don't worry. You never have to manipulate them directly. Apple's Accelerate framework handles the complex arithmetic internally. You feed in floats, you get back magnitudes. The complex numbers are an implementation detail, not something you need to reason about.</p>
+        </div>
+
+        <h3 id="frequency-bins">Frequency Bins</h3>
+
+        <p>The N/2 output values are called <strong>bins</strong>. Each bin represents a narrow band of frequencies. The width of each bin &mdash; its frequency resolution &mdash; is determined by a simple formula:</p>
+
+        <p><strong>Bin spacing = sampleRate / N</strong></p>
+
+        <p>With our parameters (44,100 Hz sample rate, 4096-sample FFT):</p>
+
+        <ul>
+            <li>Bin spacing = 44100 / 4096 &asymp; <strong>10.77 Hz per bin</strong></li>
+            <li>Bin 0 = 0 Hz (the DC offset &mdash; the average value of the signal, usually near zero for audio)</li>
+            <li>Bin 1 &asymp; 10.77 Hz</li>
+            <li>Bin 2 &asymp; 21.53 Hz</li>
+            <li>Bin 40 &asymp; 430.66 Hz (close to the A4 note at 440 Hz)</li>
+            <li>Bin 2047 &asymp; 22,050 Hz (the maximum &mdash; half the sample rate)</li>
+        </ul>
+
+        <p>That maximum frequency, sampleRate / 2, is the <strong>Nyquist frequency</strong>. It's the hard ceiling on what frequencies the FFT can detect, and it's set by the sample rate, not the FFT size. If you've read the earlier sections, you've already encountered Nyquist in the context of sampling theory. Here it shows up again: the FFT can't tell you about frequencies above Nyquist because the original samples don't contain that information.</p>
+
+        <p>So with a 4096-point FFT at 44.1 kHz, we get 2048 bins spanning 0 Hz to ~22 kHz, each about 10.77 Hz wide. That's enough resolution to distinguish individual musical notes across most of the audible range &mdash; the distance between adjacent piano keys in the middle octaves is around 15-30 Hz, so our bins are narrow enough to separate them.</p>
+
+        <h3 id="what-a-bin-really-means">What a Bin Really Means</h3>
+
+        <p>It's tempting to think of each bin as detecting a single exact frequency. It's more accurate to think of each bin as a narrow bandpass filter. Bin 40, centered around 430.66 Hz, responds to energy anywhere in the range roughly 425-436 Hz. A pure 440 Hz tone will register primarily in bin 41 (around 441 Hz), with some spillover into neighboring bins. This blurring is inherent to the FFT, and it's closely related to the next topic: spectral leakage.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="window-functions-and-spectral-leakage">Window Functions and Spectral Leakage</h2>
+        <!-- ============================================================ -->
+
+        <p>Here's a problem. The FFT's math assumes the input signal repeats forever &mdash; that your 4096 samples are one period of an infinitely repeating waveform. But they're not. They're a finite chunk snipped out of a continuous audio stream. Unless you get astronomically lucky, the signal level at the start of your buffer won't match the signal level at the end. When the FFT tries to treat this chunk as repeating, those mismatched edges create a sharp discontinuity &mdash; a sudden jump that looks like the signal is slamming from one value to another between the last sample and the first.</p>
+
+        <p>That sharp discontinuity is <em>not</em> actually in the audio. But the FFT doesn't know that. It faithfully reports the frequency content of the signal <em>including</em> the fake high-frequency energy caused by the sharp edge. This phantom energy spreads across the entire spectrum, smearing what should be clean, sharp peaks into broad, noisy humps. This artifact is called <strong>spectral leakage</strong>.</p>
+
+        <div class="diagram">
+Raw buffer (edges don't match):
+
+  sample 1                                     sample 4096
+  |                                                    |
+  v                                                    v
+  |    /\    /\    /\    /\    /\    /\    /\    /\    |
+  |   /  \  /  \  /  \  /  \  /  \  /  \  /  \  /     |
+  |  /    \/    \/    \/    \/    \/    \/    \/       |
+  |/                                                  /|
+  <em>^--- sharp jump when buffer "repeats" ---^</em></div>
+
+        <p>The solution is elegant: before running the FFT, multiply your samples by a <strong>window function</strong> &mdash; a smooth curve that starts at zero, rises to a peak in the middle, and falls back to zero at the edges. This tapers the signal so that both ends are near zero, eliminating the discontinuity entirely. No sharp edge, no fake high-frequency content, no leakage.</p>
+
+        <p>The most common window function for audio analysis is the <strong>Hann window</strong> (sometimes incorrectly called "Hanning"). It's shaped like a single period of a cosine curve, shifted and scaled so it sits between 0 and 1. It looks like a bell or an arch. Mathematically, for sample index <em>n</em> in a window of length <em>N</em>:</p>
+
+        <p><code>w(n) = 0.5 * (1 - cos(2&pi;n / N))</code></p>
+
+        <p>You don't need to implement this yourself &mdash; Apple's Accelerate framework provides it as a one-liner. But understanding <em>why</em> it exists matters.</p>
+
+        <div class="diagram">
+Raw buffer:                    Hann window:                  Windowed buffer:
+
+|<em>&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;</em>|          |     <em>&#9585;&#9473;&#9473;&#9473;&#9473;&#9586;</em>     |          |   <em>&#9604;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9604;</em>   |
+ ^ sharp edges ^               smooth taper                  smooth edges
+                                (zero at ends)                (no discontinuity)</div>
+
+        <p>The windowing operation is just element-wise multiplication. Sample 0 gets multiplied by ~0 (the window is zero at the edges). Sample 2048 (the middle) gets multiplied by 1.0 (the window peaks at the center). Every sample between is scaled by the window's smooth curve. The result: a buffer that smoothly fades in and fades out, with most of the energy concentrated in the middle where the window is strongest.</p>
+
+        <h3 id="windowing-tradeoff">The Tradeoff</h3>
+
+        <p>Nothing is free. Windowing dramatically reduces spectral leakage, but it comes at a cost: slightly reduced frequency resolution. The peaks in your spectrum become a bit wider, making it marginally harder to distinguish two very close frequencies. Think of it as a slider between "sharp peaks with noisy leakage" and "clean peaks that are slightly blurred." For a visual spectrum analyzer, the clean-but-slightly-blurred option is overwhelmingly better. The leakage from an un-windowed FFT would make your display look like noise.</p>
+
+        <p>There are dozens of window functions beyond Hann &mdash; Hamming, Blackman, Kaiser, flat-top &mdash; each with slightly different tradeoffs between peak width and leakage suppression. Hann is the default choice for spectrum analyzers because it offers a good balance for visual display. If you were building a precision measurement tool, you might agonize over the choice. For our purposes, Hann is perfect. Use it and move on.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">DSP Concept</div>
+            <p>If you want to build intuition, think of windowing as a "focus" operation. Without it, you're asking the FFT to analyze the entire buffer equally, including the messy edges. With it, you're telling the FFT "focus on the middle of this buffer where the signal is cleanest, and gradually ignore the edges." You lose a bit of data at the margins, but the data you keep is much more accurate.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="fft-size-tradeoffs">FFT Size Tradeoffs</h2>
+        <!-- ============================================================ -->
+
+        <p>The FFT size (N) is the single most important parameter you'll choose for your spectrum analyzer. It controls two things that pull in opposite directions: <strong>frequency resolution</strong> and <strong>time resolution</strong> (latency).</p>
+
+        <h3 id="frequency-resolution">Frequency Resolution</h3>
+
+        <p>More samples in = more bins out = finer frequency detail. The formula again: bin spacing = sampleRate / N.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>FFT Size (N)</th>
+                    <th>Bins (N/2)</th>
+                    <th>Bin Spacing</th>
+                    <th>Can Distinguish Notes...</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>512</td>
+                    <td>256</td>
+                    <td>86.1 Hz</td>
+                    <td>Only octaves apart</td>
+                </tr>
+                <tr>
+                    <td>1024</td>
+                    <td>512</td>
+                    <td>43.1 Hz</td>
+                    <td>A few semitones apart</td>
+                </tr>
+                <tr>
+                    <td>2048</td>
+                    <td>1024</td>
+                    <td>21.5 Hz</td>
+                    <td>Adjacent notes (above ~200 Hz)</td>
+                </tr>
+                <tr>
+                    <td><strong>4096</strong></td>
+                    <td><strong>2048</strong></td>
+                    <td><strong>10.8 Hz</strong></td>
+                    <td><strong>Adjacent notes across most of the range</strong></td>
+                </tr>
+                <tr>
+                    <td>8192</td>
+                    <td>4096</td>
+                    <td>5.4 Hz</td>
+                    <td>Fine pitch differences</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3 id="latency">Latency (Time Resolution)</h3>
+
+        <p>Here's the catch. To fill a buffer of N samples at 44,100 samples/second, you have to <em>wait</em> for N/44100 seconds of audio to arrive. Bigger buffer = longer wait.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>FFT Size (N)</th>
+                    <th>Buffer Duration</th>
+                    <th>Feel</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>512</td>
+                    <td>~12 ms</td>
+                    <td>Instantaneous &mdash; but blurry spectrum</td>
+                </tr>
+                <tr>
+                    <td>1024</td>
+                    <td>~23 ms</td>
+                    <td>Very responsive</td>
+                </tr>
+                <tr>
+                    <td>2048</td>
+                    <td>~46 ms</td>
+                    <td>Quick, slightly soft</td>
+                </tr>
+                <tr>
+                    <td><strong>4096</strong></td>
+                    <td><strong>~93 ms</strong></td>
+                    <td><strong>Responsive enough for visualization</strong></td>
+                </tr>
+                <tr>
+                    <td>8192</td>
+                    <td>~186 ms</td>
+                    <td>Noticeable lag &mdash; but razor-sharp spectrum</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>This is a fundamental tradeoff in signal processing, sometimes called the <strong>time-frequency uncertainty principle</strong>. You cannot have both perfect frequency resolution and perfect time resolution simultaneously. A longer window gives you a sharper view of frequency but a blurrier view of time. A shorter window gives you precise timing but fuzzy frequency.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">DSP Concept</div>
+            <p>This tradeoff isn't a limitation of the FFT algorithm &mdash; it's a fundamental property of signals. It's closely related to the Heisenberg uncertainty principle in physics (you can't know both position and momentum precisely). In the signal processing world, you can't know both "when" and "what frequency" with arbitrary precision. The FFT size is how you choose your compromise point.</p>
+        </div>
+
+        <h3 id="sweet-spot">The Sweet Spot for a Visual Analyzer</h3>
+
+        <p>For a spectrum analyzer displayed on a phone screen, <strong>4096</strong> is the sweet spot. Here's why:</p>
+
+        <ul>
+            <li><strong>93ms latency</strong> is below the threshold where humans perceive visual lag. Your bars will appear to move in real time. (Compare to video, which is typically 16-33ms per frame &mdash; 93ms is about 5-6 video frames. For a meter display, that's fine.)</li>
+            <li><strong>10.8 Hz resolution</strong> is fine enough to distinguish individual musical notes above about 100 Hz. The notes C3 (130.8 Hz) and C#3 (138.6 Hz) are 7.8 Hz apart &mdash; right at the edge, but our log-spaced bar grouping (Section 6) averages multiple bins, which smooths things out.</li>
+            <li><strong>2048 bins</strong> gives us plenty of raw data to aggregate into the 48 display bars we'll create in Section 6.</li>
+        </ul>
+
+        <p>For a guitar tuner, you'd want 8192 or even 16384 to resolve the fine pitch differences between in-tune and slightly-sharp. For a beat detector, you'd want 512 or 1024 for fast response to transients. The right FFT size depends entirely on what you're building.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="putting-it-all-together">Putting It All Together</h2>
+        <!-- ============================================================ -->
+
+        <p>Let's walk through the complete pipeline that will turn a microphone signal into a spectrum display. No code yet &mdash; just the sequence of operations. In Section 6, we'll implement each of these steps.</p>
+
+        <ol>
+            <li><strong>Capture 4096 samples</strong> from the microphone via <code>AVAudioEngine</code>'s tap.</li>
+            <li><strong>Apply the Hann window</strong> &mdash; multiply each sample by the corresponding window value. This tapers the buffer edges to zero, eliminating spectral leakage.</li>
+            <li><strong>Run the FFT</strong> &mdash; feed the windowed buffer to Accelerate's <code>vDSP.FFT</code>. Out come 2048 complex numbers.</li>
+            <li><strong>Compute magnitudes</strong> &mdash; for each complex output, calculate <code>sqrt(real&sup2; + imag&sup2;)</code> to get the amplitude at that frequency. Normalize by dividing by N.</li>
+            <li><strong>Map to log-spaced bars</strong> &mdash; group the 2048 linear bins into 48 logarithmically spaced bars so that each bar covers a perceptually equal range of frequencies.</li>
+            <li><strong>Convert to decibels</strong> and normalize to a 0-1 range for display.</li>
+            <li><strong>Send to SwiftUI</strong> &mdash; update the published array of bar heights, triggering an animated redraw.</li>
+        </ol>
+
+        <div class="diagram">
+  <em>Microphone</em> &rarr; [4096 samples] &rarr; <em>Window</em> &rarr; [4096 windowed] &rarr; <em>FFT</em> &rarr; [2048 complex]
+                                                                        |
+                                                                        v
+  <em>SwiftUI bars</em> &larr; [48 floats 0-1] &larr; <em>Log grouping</em> &larr; [2048 magnitudes] &larr; <em>|z|</em></div>
+
+        <p>Steps 1 and 7 are iOS (AVAudioEngine and SwiftUI). Steps 2 through 6 are DSP. Step 5 is where human perception meets math. This is the complete pipeline for a real-time spectrum analyzer, and it's what professional audio apps do. The only difference between our tutorial app and a production spectrum analyzer is polish: peak hold, averaging, more sophisticated windowing, maybe overlap-add processing. The core pipeline is the same.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="why-not-just-use-a-library">Why Not Just Use a Library?</h2>
+        <!-- ============================================================ -->
+
+        <p>You might be thinking: surely there's a library that does all of this in one function call. And there is &mdash; Apple's Accelerate framework handles the heavy lifting. But we're using it as a toolkit, not a black box. Understanding what the FFT does and why windowing matters will save you hours of debugging when your spectrum display looks wrong. "The bars are all noisy" &mdash; did you forget windowing? "I can't distinguish close notes" &mdash; is your FFT size too small? "The display feels laggy" &mdash; is it too large? These are questions you can only answer if you understand the theory.</p>
+
+        <p>Besides, the theory is beautiful. You're about to take a messy stream of air-pressure measurements and decompose it into pure tones. That's genuinely amazing, and it'll take about 30 lines of Swift.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="section-summary">Section Summary</h2>
+        <!-- ============================================================ -->
+
+        <p>Here's what to hold in your head going into Section 6:</p>
+
+        <ul>
+            <li>The <strong>FFT</strong> converts time-domain samples into frequency-domain magnitudes. Feed in N floats, get back N/2 frequency bins.</li>
+            <li>Each <strong>bin</strong> represents a narrow frequency band. Bin spacing = sampleRate / N.</li>
+            <li><strong>Window functions</strong> (Hann) taper the buffer edges to prevent spectral leakage &mdash; fake high-frequency artifacts caused by the buffer's abrupt boundaries.</li>
+            <li>FFT size controls the <strong>resolution/latency tradeoff</strong>. We're using 4096: 10.8 Hz resolution with 93ms latency. Good enough for a visual analyzer.</li>
+            <li>The output needs <strong>log-frequency grouping</strong> to match human hearing. We'll do that in code.</li>
+        </ul>
+
+        <p>With this foundation, the code in Section 6 will be refreshingly straightforward. Every line maps directly to one of the concepts above. Let's go build it.</p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>This was a theory section &mdash; nothing to build and run. But you should be able to answer these questions: What does the FFT transform <em>from</em> and <em>to</em>? Why do we apply a window function before the FFT? What determines the frequency resolution of the output? If you can answer those three, you're ready for Section 6.</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section04">&larr; Previous</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section06">Next &rarr;</a>
+        </nav>

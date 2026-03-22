@@ -1,0 +1,275 @@
+---
+layout: spectrum
+title: "Accelerating the Math — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section04
+---
+
+
+        <h1><span class="section-number">4.</span> Accelerating the Math</h1>
+        <p><span class="tag tag-both">Both</span></p>
+
+        <p>In Section 3, we wrote a <code>for</code> loop to compute RMS. It works. For 1024 samples, it is
+        fast enough that you would never notice a problem. But we are about to enter the world of the Fast
+        Fourier Transform, where we need to do thousands of multiplications and additions per audio buffer,
+        dozens of times per second. A naive loop will not cut it.</p>
+
+        <p>Fortunately, Apple ships a solution right in the OS.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="accelerate-framework">Apple's Accelerate Framework</h2>
+
+        <p><strong>Accelerate</strong> is Apple's SIMD-optimized math library. It has been part of macOS and
+        iOS for over a decade, and it is fast — seriously fast. The sub-library we care about is called
+        <strong>vDSP</strong> (vector digital signal processing), which provides optimized routines for
+        exactly the kind of operations audio code needs: squaring arrays, computing sums, applying the
+        FFT, and more.</p>
+
+        <div class="diagram">
+            <pre>
+┌──────────────────────────────────────────────────────┐
+│                  <em>Accelerate Framework</em>                │
+│                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
+│  │  <em>vDSP</em>   │  │  vImage  │  │  BLAS / LAPACK   │   │
+│  │  signal  │  │  image   │  │  linear algebra  │   │
+│  │  process │  │  process │  │                  │   │
+│  └──────────┘  └──────────┘  └──────────────────┘   │
+│                                                      │
+│  Runs on: SIMD units (NEON), Apple AMX coprocessor   │
+└──────────────────────────────────────────────────────┘
+            </pre>
+        </div>
+
+        <p>Under the hood, Accelerate uses NEON SIMD instructions on ARM (the CPU in every iPhone) to
+        process 4 or 8 floats in a single instruction. On Apple Silicon Macs, it can also use the AMX
+        coprocessor for even wider operations. You do not need to know any of this to use it — you just
+        call the function and it picks the fastest path for the hardware.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">C# comparison</div>
+            <p>The closest equivalents in the .NET world are <code>System.Numerics.Vector&lt;T&gt;</code>
+            (which uses hardware SIMD intrinsics), or libraries like <strong>MathNet.Numerics</strong>.
+            The key difference is that Accelerate is built into the OS, tuned specifically for Apple
+            hardware, and available on every device without adding a NuGet package. It is the standard
+            way to do fast math on Apple platforms — not a third-party optimization, but the expected
+            approach.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="replacing-rms-loop">Replacing the RMS Loop with vDSP</h2>
+
+        <p>Let's see the transformation. Here is our original hand-written loop:</p>
+
+        <pre><code class="language-swift">// Before: manual loop
+var sum: Float = 0
+for i in 0..&lt;frameCount {
+    let sample = channelData[i]
+    sum += sample * sample
+}
+return sqrt(sum / Float(frameCount))</code></pre>
+
+        <p>And here is the vDSP replacement:</p>
+
+        <pre><code class="language-swift">// After: vDSP-accelerated
+private static func computeRMS(samples: [Float]) -> Float {
+    guard !samples.isEmpty else { return 0 }
+    var sum: Float = 0
+    vDSP_svesq(samples, 1, &amp;sum, vDSP_Length(samples.count))
+    return sqrt(sum / Float(samples.count))
+}</code></pre>
+
+        <p>One function call replaces the entire loop. Let's unpack <code>vDSP_svesq</code>:</p>
+
+        <ul>
+            <li><strong>Name breakdown:</strong> <code>s</code> = scalar result, <code>v</code> = vector
+            input, <code>e</code> = elements, <code>sq</code> = squared. So: "scalar sum of vector elements
+            squared." Apple's vDSP naming is terse, but there is a logic to it once you learn the
+            pattern.</li>
+
+            <li><strong><code>samples</code></strong> — The input array. Swift automatically bridges a
+            <code>[Float]</code> array to the <code>UnsafePointer&lt;Float&gt;</code> that the C function
+            expects.</li>
+
+            <li><strong><code>1</code></strong> — The stride. Process every element. A stride of 2 would
+            skip every other element (useful for interleaved stereo data where you want just one channel).</li>
+
+            <li><strong><code>&amp;sum</code></strong> — An <em>inout</em> parameter. The function writes
+            its result here. The <code>&amp;</code> prefix is like C#'s <code>ref</code> keyword — it
+            passes a reference to the variable, not a copy.</li>
+
+            <li><strong><code>vDSP_Length(samples.count)</code></strong> — The number of elements to
+            process. <code>vDSP_Length</code> is just a type alias for <code>UInt</code>.</li>
+        </ul>
+
+        <p>Internally, <code>vDSP_svesq</code> loads 4 floats at a time into a SIMD register, multiplies
+        them all by themselves in parallel, and accumulates the results. For our 1024-sample buffer, that
+        is roughly 256 SIMD operations instead of 1024 scalar ones. For the larger buffers we will use
+        with the FFT (4096+ samples), the speedup is even more significant.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">Is it really faster for 1024 samples?</div>
+            <p>Honestly, for a 1024-element RMS calculation, the difference is negligible — maybe
+            microseconds. The Swift compiler might even auto-vectorize the manual loop. We are making
+            this change now not because the VU meter needs it, but because it introduces the Accelerate
+            pattern we will rely on heavily in Section 5 when we implement the FFT. Think of this as
+            practice with a simple case before tackling a complex one.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="unsafe-pointer-model">Swift's Unsafe Pointer Model</h2>
+
+        <p>You might have noticed the function signature changed. The old version took an
+        <code>AVAudioPCMBuffer</code>; the new one takes <code>[Float]</code>. That means we need to
+        extract the samples from the buffer first:</p>
+
+        <pre><code class="language-swift">guard let channelData = buffer.floatChannelData?[0] else { return }
+let samples = Array(UnsafeBufferPointer(start: channelData,
+                                        count: Int(buffer.frameLength)))</code></pre>
+
+        <p>Here is what is happening:</p>
+
+        <ol>
+            <li><strong><code>buffer.floatChannelData?[0]</code></strong> — Returns an
+            <code>UnsafeMutablePointer&lt;Float&gt;</code>, which is a raw pointer to the first sample.
+            This is the audio data sitting in a system-managed memory buffer.</li>
+
+            <li><strong><code>UnsafeBufferPointer(start:count:)</code></strong> — Wraps the raw pointer
+            with a length, creating a type that knows its bounds. This is conceptually identical to
+            <code>Span&lt;float&gt;</code> in C# — a safe-ish view over unmanaged memory that prevents
+            you from accidentally reading past the end.</li>
+
+            <li><strong><code>Array(...)</code></strong> — Copies the data into a regular Swift
+            <code>[Float]</code> array. Now we have a normal, safe, reference-counted array that we can
+            pass around freely.</li>
+        </ol>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">C# comparison</div>
+            <p>The flow is similar to working with native interop in C#:
+            <code>IntPtr</code> &rarr; <code>Span&lt;float&gt;</code> &rarr; <code>float[]</code>.
+            You start with an unsafe pointer from a native API, wrap it in something with bounds checking,
+            then optionally copy to a managed array. In Swift, "unsafe" is right there in the type name
+            (<code>UnsafeBufferPointer</code>) as a reminder that you are leaving safe territory.</p>
+        </div>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Performance note</div>
+            <p>Copying 1024 floats into a new array is 4 KB of data — trivial. Even at 4096 samples, that
+            is only 16 KB, which fits comfortably in L1 cache. For our use case, the copy is a non-issue.
+            In extreme performance scenarios, you could work directly with the
+            <code>UnsafeBufferPointer</code> and avoid the copy entirely, but that adds complexity with
+            no measurable benefit here.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="updated-audioengine">The Updated AudioEngine</h2>
+
+        <p>The changes to <code>AudioEngine.swift</code> are minimal. Here is what is different:</p>
+
+        <pre><code class="language-swift">import AVFoundation
+import Observation
+import Accelerate    // &larr; NEW: import the framework</code></pre>
+
+        <p>The tap callback now extracts samples before calling the processing function:</p>
+
+        <pre><code class="language-swift">input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+    // Extract samples from the audio buffer
+    guard let channelData = buffer.floatChannelData?[0] else { return }
+    let samples = Array(UnsafeBufferPointer(start: channelData,
+                                            count: Int(buffer.frameLength)))
+
+    let rms = Self.computeRMS(samples: samples)
+    let normalized = Self.normalize(rms)
+    DispatchQueue.main.async {
+        self?.level = normalized
+    }
+}</code></pre>
+
+        <p>And the <code>computeRMS</code> function uses vDSP:</p>
+
+        <pre><code class="language-swift">private static func computeRMS(samples: [Float]) -> Float {
+    guard !samples.isEmpty else { return 0 }
+    var sum: Float = 0
+    vDSP_svesq(samples, 1, &amp;sum, vDSP_Length(samples.count))
+    return sqrt(sum / Float(samples.count))
+}</code></pre>
+
+        <p>Everything else stays the same. The <code>normalize</code> function, the <code>start()</code>
+        and <code>stop()</code> methods, the properties — all unchanged. The <code>ContentView</code>
+        does not need any modifications at all.</p>
+
+        <div class="callout callout-both">
+            <div class="callout-title">Architecture observation</div>
+            <p>Notice how cleanly this refactor went. We changed the <em>implementation</em> of one
+            function without touching the <em>interface</em>. The view does not know or care whether
+            RMS is computed with a for loop or a SIMD-accelerated function call. This separation — the
+            audio engine handles DSP, the view handles display — will serve us well as the processing
+            gets more complex.</p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>Build and run after making these changes. The app should behave identically to before —
+            same VU meter, same responsiveness. If something broke, double-check that you added
+            <code>import Accelerate</code> and that the <code>computeRMS</code> signature now takes
+            <code>samples: [Float]</code> instead of <code>buffer: AVAudioPCMBuffer</code>.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="why-this-matters">Why This Matters for What's Next</h2>
+
+        <p>The RMS replacement was a warm-up. In Section 5, we tackle the <strong>Fast Fourier
+        Transform</strong>, and that is where Accelerate becomes essential rather than optional.</p>
+
+        <p>Consider what the FFT involves:</p>
+
+        <ul>
+            <li>Multiplying a 4096-element array by a window function (4096 multiplications)</li>
+            <li>Performing the FFT itself (roughly 4096 &times; log<sub>2</sub>(4096) = ~49,000
+            operations)</li>
+            <li>Computing the magnitude of each frequency bin (2048 squares, sums, and square roots)</li>
+            <li>Converting to decibels (2048 logarithms)</li>
+        </ul>
+
+        <p>All of this must happen within the time between audio callbacks — about 23 ms at our buffer
+        size. A naive, scalar implementation might take 5-10 ms. The Accelerate-powered version takes
+        under 1 ms. That is the difference between a responsive app and one that drops audio frames.</p>
+
+        <div class="diagram">
+            <pre>
+         Processing time per buffer (approximate)
+
+  Naive loops:     ████████████████████░░░░░░░░░░  ~8ms
+  Accelerate/vDSP: ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░  &lt;1ms
+  Budget (23ms):   ██████████████████████████████░  23ms
+
+  <em>Both fit within budget, but Accelerate leaves far more
+  headroom for the UI, animations, and other processing.</em>
+            </pre>
+        </div>
+
+        <p>Accelerate also provides <code>vDSP_fft_zrip</code> — a single function call that performs the
+        entire FFT on a real-valued signal. We will use it in Section 5, along with several other vDSP
+        functions for windowing and magnitude calculation. The pattern will be the same as what we saw
+        here: replace loops with single function calls, pass arrays in, get results out.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">The vDSP naming convention</div>
+            <p>vDSP function names look cryptic at first, but they follow a pattern:</p>
+            <ul>
+                <li><code>vDSP_svesq</code> — <strong>s</strong>calar = <strong>v</strong>ector
+                <strong>e</strong>lements <strong>sq</strong>uared</li>
+                <li><code>vDSP_vmul</code> — <strong>v</strong>ector <strong>mul</strong>tiply</li>
+                <li><code>vDSP_vsmul</code> — <strong>v</strong>ector <strong>s</strong>calar
+                <strong>mul</strong>tiply</li>
+                <li><code>vDSP_fft_zrip</code> — <strong>fft</strong>, <strong>z</strong> = complex,
+                <strong>r</strong> = real input, <strong>i</strong>n-<strong>p</strong>lace</li>
+            </ul>
+            <p>Once you crack the code, reading vDSP function names becomes almost natural. We will
+            encounter several more in the next two sections.</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section03">&larr; Previous: Capturing Audio on iOS</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section05">Next: The Fourier Transform &rarr;</a>
+        </nav>

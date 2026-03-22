@@ -1,0 +1,399 @@
+---
+layout: spectrum
+title: "Complete Source Code Reference — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section10
+---
+
+
+        <h1><span class="section-number">10.</span> Complete Source Code Reference <span class="tag tag-both">Both</span></h1>
+
+        <p>This section contains the final version of every source file in the project. Use it as a
+        reference if you got lost during the tutorial, or as a starting point if you want to skip
+        ahead and have the working app in front of you. Each file includes a brief description and
+        cross-references to the tutorial sections where its components were explained.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="project-structure">Project Structure</h2>
+
+        <p>The complete project has four Swift source files and one asset catalog. Here is the file
+        layout:</p>
+
+        <div class="diagram">
+            <pre>
+VUMeter/
+&#9500;&#9472;&#9472; VUMeter.xcodeproj
+&#9492;&#9472;&#9472; VUMeter/
+    &#9500;&#9472;&#9472; <em>VUMeterApp.swift</em>          &larr; App entry point
+    &#9500;&#9472;&#9472; <em>AudioEngine.swift</em>         &larr; Audio capture + processing
+    &#9500;&#9472;&#9472; <em>SpectrumAnalyzer.swift</em>    &larr; FFT analysis
+    &#9500;&#9472;&#9472; <em>ContentView.swift</em>         &larr; All UI code
+    &#9492;&#9472;&#9472; Assets.xcassets/          &larr; App icon, colors
+            </pre>
+        </div>
+
+        <p>There are no storyboards, no XIB files, no Interface Builder artifacts. The entire UI is
+        defined in Swift code via SwiftUI. The entire audio pipeline is pure Swift with calls into
+        Apple's Accelerate framework for the heavy math. No third-party dependencies.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="vumeterapp-swift">VUMeterApp.swift</h2>
+
+        <p>The app entry point. This file defines the <code>@main</code> struct and launches the single
+        window containing <code>ContentView</code>. Covered in
+        <a href="/projects/spectrum-analyzer/tutorial/section01">Section 1</a>.</p>
+
+        <pre><code class="language-swift">import SwiftUI
+
+@main
+struct VUMeterApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}</code></pre>
+
+        <p>Nothing to customize here. This is the standard SwiftUI app boilerplate. If you later add
+        features like app-level state (a settings model, for instance), you would inject them into the
+        environment from this file.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="audioengine-swift">AudioEngine.swift</h2>
+
+        <p>The audio capture and processing engine. This class owns the <code>AVAudioEngine</code>,
+        installs a tap on the microphone input, computes RMS level, and delegates FFT analysis to
+        <code>SpectrumAnalyzer</code>. The initial version was built in
+        <a href="/projects/spectrum-analyzer/tutorial/section03">Section 3</a>, optimized with Accelerate in
+        <a href="/projects/spectrum-analyzer/tutorial/section04">Section 4</a>, and extended with spectrum data in
+        <a href="/projects/spectrum-analyzer/tutorial/section06">Section 6</a>.</p>
+
+        <pre><code class="language-swift">import AVFoundation
+import Accelerate
+import Observation
+
+@Observable
+class AudioEngine {
+    var level: Float = 0.0
+    var spectrumBars: [Float] = Array(repeating: 0, count: 48)
+    var peakHz: Float = 0
+    var peakNote: String = "&mdash;"
+    var isRunning = false
+
+    private let engine = AVAudioEngine()
+    private let analyzer = SpectrumAnalyzer(binCount: 48)
+
+    func start() {
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
+
+            guard let channelData = buffer.floatChannelData?[0] else { return }
+            let samples = Array(UnsafeBufferPointer(start: channelData,
+                                                    count: Int(buffer.frameLength)))
+
+            let rms = Self.computeRMS(samples: samples)
+            let (bars, peakHz, note) = self.analyzer.process(buffer: samples)
+
+            DispatchQueue.main.async {
+                self.level = Self.normalize(rms)
+                self.spectrumBars = bars
+                self.peakHz = peakHz
+                self.peakNote = note
+            }
+        }
+
+        do {
+            try engine.start()
+            isRunning = true
+        } catch {
+            print("Audio engine failed to start: \(error)")
+        }
+    }
+
+    func stop() {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        isRunning = false
+        level = 0
+        spectrumBars = Array(repeating: 0, count: 48)
+        peakHz = 0
+        peakNote = "&mdash;"
+    }
+
+    private static func computeRMS(samples: [Float]) -&gt; Float {
+        guard !samples.isEmpty else { return 0 }
+        var sum: Float = 0
+        vDSP_svesq(samples, 1, &amp;sum, vDSP_Length(samples.count))
+        return sqrt(sum / Float(samples.count))
+    }
+
+    private static func normalize(_ rms: Float) -&gt; Float {
+        let db = 20 * log10(max(rms, 1e-6))
+        let clamped = max(-60, min(0, db))
+        return (clamped + 60) / 60
+    }
+}</code></pre>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Key design decisions</div>
+            <p><strong>Buffer size of 4096</strong>: balances frequency resolution (10.8 Hz per bin at
+            44.1 kHz) against latency (~93 ms). <strong><code>vDSP_svesq</code></strong>: replaces
+            the hand-written RMS loop from Section 3 with a single Accelerate call
+            (see <a href="/projects/spectrum-analyzer/tutorial/section04">Section 4</a>).
+            <strong><code>[weak self]</code></strong>: prevents a retain cycle between the closure
+            and the engine instance
+            (see <a href="/projects/spectrum-analyzer/tutorial/section03">Section 3</a>).</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="spectrumanalyzer-swift">SpectrumAnalyzer.swift</h2>
+
+        <p>The FFT-based frequency analysis engine. Takes raw audio samples, applies a Hanning window,
+        computes the FFT via Accelerate, maps frequency bins to 48 logarithmically spaced display bars,
+        and identifies the peak frequency as a musical note. Built in
+        <a href="/projects/spectrum-analyzer/tutorial/section05">Section 5</a> and integrated in
+        <a href="/projects/spectrum-analyzer/tutorial/section06">Section 6</a>.</p>
+
+        <pre><code class="language-swift">import Accelerate
+
+struct SpectrumAnalyzer {
+    let binCount: Int
+    let sampleRate: Double
+    private let fftSize: Int
+    private let halfSize: Int
+    private var fftSetup: vDSP.FFT&lt;DSPSplitComplex&gt;?
+    private var window: [Float]
+
+    init(binCount: Int = 48, sampleRate: Double = 44100, fftSize: Int = 4096) {
+        self.binCount = binCount
+        self.sampleRate = sampleRate
+        self.fftSize = fftSize
+        self.halfSize = fftSize / 2
+
+        self.window = vDSP.window(ofType: Float.self,
+                                  usingSequence: .hanningDenormalized,
+                                  count: fftSize,
+                                  isHalfWindow: false)
+
+        let log2n = vDSP_Length(log2(Float(fftSize)))
+        self.fftSetup = vDSP.FFT(log2n: log2n,
+                                 radix: .radix2,
+                                 ofType: DSPSplitComplex.self)
+    }
+
+    func process(buffer: [Float]) -&gt; (bars: [Float], peakHz: Float, note: String) {
+        guard let fftSetup else {
+            return (Array(repeating: 0, count: binCount), 0, "&mdash;")
+        }
+
+        // Pad or truncate to FFT size, then apply window
+        var samples = Array(buffer.prefix(fftSize))
+        if samples.count &lt; fftSize {
+            samples += Array(repeating: 0, count: fftSize - samples.count)
+        }
+        vDSP.multiply(samples, window, result: &amp;samples)
+
+        // FFT: convert to split complex, transform, compute magnitudes
+        var reals = [Float](repeating: 0, count: halfSize)
+        var imags = [Float](repeating: 0, count: halfSize)
+        let magnitudes: [Float] = reals.withUnsafeMutableBufferPointer { realsBP in
+            imags.withUnsafeMutableBufferPointer { imagsBP in
+                var splitComplex = DSPSplitComplex(
+                    realp: realsBP.baseAddress!,
+                    imagp: imagsBP.baseAddress!)
+                samples.withUnsafeBytes { ptr in
+                    let floatPtr = ptr.bindMemory(to: DSPComplex.self)
+                    vDSP_ctoz(floatPtr.baseAddress!, 2,
+                              &amp;splitComplex, 1,
+                              vDSP_Length(halfSize))
+                }
+
+                fftSetup.forward(input: splitComplex, output: &amp;splitComplex)
+
+                var mags = [Float](repeating: 0, count: halfSize)
+                vDSP.absolute(splitComplex, result: &amp;mags)
+                vDSP.multiply(1.0 / Float(fftSize), mags, result: &amp;mags)
+                return mags
+            }
+        }
+
+        // Map to log-spaced display bars
+        let bars = logSpacedBars(magnitudes: magnitudes)
+
+        // Find peak frequency and convert to note name
+        let peakBin = magnitudes.indices.max(by: {
+            magnitudes[$0] &lt; magnitudes[$1]
+        }) ?? 0
+        let peakHz = Float(peakBin) * Float(sampleRate) / Float(fftSize)
+        let note = peakHz &gt; 30 ? frequencyToNote(peakHz) : "&mdash;"
+
+        return (bars, peakHz, note)
+    }
+
+    private func logSpacedBars(magnitudes: [Float]) -&gt; [Float] {
+        let minFreq: Float = 60
+        let maxFreq: Float = 18000
+        let logMin = log10(minFreq)
+        let logMax = log10(maxFreq)
+
+        return (0..&lt;binCount).map { i in
+            let logLow  = logMin + Float(i)     / Float(binCount) * (logMax - logMin)
+            let logHigh = logMin + Float(i + 1) / Float(binCount) * (logMax - logMin)
+            let freqLow  = pow(10, logLow)
+            let freqHigh = pow(10, logHigh)
+
+            let binLow  = Int(freqLow  / Float(sampleRate) * Float(fftSize))
+            let binHigh = Int(freqHigh / Float(sampleRate) * Float(fftSize))
+            let lo = max(0, binLow)
+            let hi = min(magnitudes.count - 1, max(binLow, binHigh))
+            let slice = magnitudes[lo...hi]
+
+            let avg = slice.isEmpty ? 0 : slice.reduce(0, +) / Float(slice.count)
+            let db = 20 * log10(max(avg, 1e-9))
+            let normalized = (db + 80) / 80
+            return max(0, min(1, normalized))
+        }
+    }
+
+    private func frequencyToNote(_ hz: Float) -&gt; String {
+        let notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+        let midi = Int(round(12 * log2(hz / 440.0) + 69))
+        let note = notes[((midi % 12) + 12) % 12]
+        let octave = (midi / 12) - 1
+        return "\(note)\(octave)"
+    }
+}</code></pre>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">Anatomy of the FFT pipeline</div>
+            <p>The signal processing chain in <code>process()</code> follows a standard pattern:
+            <strong>pad/truncate</strong> to a power-of-two length,
+            <strong>window</strong> to reduce spectral leakage
+            (see <a href="/projects/spectrum-analyzer/tutorial/section05">Section 5</a>),
+            <strong>FFT</strong> to transform from time domain to frequency domain,
+            <strong>magnitude</strong> to collapse complex values to real amplitudes, and
+            <strong>normalize</strong> by dividing by FFT size so magnitudes are independent of buffer
+            length. The log-spaced binning then maps the linear FFT output to a perceptual frequency
+            scale for display.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="contentview-swift">ContentView.swift</h2>
+
+        <p>The complete UI: note display, spectrum bar chart, VU meter bar, and start/stop button. The
+        initial placeholder was built in <a href="/projects/spectrum-analyzer/tutorial/section01">Section 1</a>, wired to
+        audio in <a href="/projects/spectrum-analyzer/tutorial/section03">Section 3</a>, and extended with the spectrum
+        view in <a href="/projects/spectrum-analyzer/tutorial/section07">Section 7</a>.</p>
+
+        <pre><code class="language-swift">import SwiftUI
+
+struct ContentView: View {
+    @State private var audio = AudioEngine()
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                // Peak note display
+                VStack(spacing: 4) {
+                    Text(audio.peakNote)
+                        .font(.system(size: 48, weight: .thin, design: .monospaced))
+                        .foregroundStyle(.white)
+                    Text(audio.peakHz &gt; 30
+                         ? String(format: "%.1f Hz", audio.peakHz)
+                         : "&mdash;")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.gray)
+                }
+                .frame(height: 80)
+
+                // Spectrum bars
+                SpectrumView(bars: audio.spectrumBars)
+                    .frame(height: 200)
+                    .padding(.horizontal, 16)
+
+                // VU meter bar
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.1))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(vuColor(level: audio.level))
+                            .frame(width: geo.size.width * CGFloat(audio.level))
+                            .animation(.easeOut(duration: 0.05), value: audio.level)
+                    }
+                }
+                .frame(height: 12)
+                .padding(.horizontal, 16)
+
+                // Start/stop button
+                Button(audio.isRunning ? "Stop" : "Start") {
+                    audio.isRunning ? audio.stop() : audio.start()
+                }
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 48)
+                .padding(.vertical, 12)
+                .background(audio.isRunning ? Color.red : Color.green)
+                .clipShape(Capsule())
+            }
+            .padding(.vertical, 40)
+        }
+    }
+
+    func vuColor(level: Float) -&gt; Color {
+        switch level {
+        case 0..&lt;0.6:    return .green
+        case 0.6..&lt;0.85: return .yellow
+        default:         return .red
+        }
+    }
+}
+
+struct SpectrumView: View {
+    let bars: [Float]
+
+    var body: some View {
+        GeometryReader { geo in
+            let barWidth = geo.size.width / CGFloat(bars.count)
+            let spacing: CGFloat = 1
+
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(bars.indices, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(barColor(index: i, count: bars.count))
+                        .frame(
+                            width: barWidth - spacing,
+                            height: max(2, geo.size.height * CGFloat(bars[i]))
+                        )
+                        .animation(.easeOut(duration: 0.08), value: bars[i])
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+    }
+
+    func barColor(index: Int, count: Int) -&gt; Color {
+        let t = Double(index) / Double(count)
+        return Color(hue: 0.35 - t * 0.35, saturation: 0.9, brightness: 0.9)
+    }
+}</code></pre>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">UI structure at a glance</div>
+            <p><code>ContentView</code> owns the <code>AudioEngine</code> via <code>@State</code> and
+            reads five reactive properties from it: <code>level</code>, <code>spectrumBars</code>,
+            <code>peakHz</code>, <code>peakNote</code>, and <code>isRunning</code>. SwiftUI tracks which
+            views depend on which properties and only redraws what changes. The
+            <code>SpectrumView</code> is a separate struct for clarity, but it could live inline.
+            The hue-based coloring creates a green-to-red gradient across the 48 bars
+            (see <a href="/projects/spectrum-analyzer/tutorial/section07">Section 7</a>).</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section09">&larr; Previous: Beyond the Tutorial</a>
+            <a href="/projects/spectrum-analyzer/tutorial/">Back to Index &rarr;</a>
+        </nav>

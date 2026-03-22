@@ -1,0 +1,357 @@
+---
+layout: spectrum
+title: "The Spectrum UI — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section07
+---
+
+
+        <h1><span class="section-number">7.</span> The Spectrum UI <span class="tag tag-ios">iOS</span></h1>
+
+        <p>The DSP pipeline from Section 6 produces an array of 48 floats between 0 and 1, a peak frequency in Hz, and a note name. That data arrives on the main thread, ready for display. Now we need to actually display it.</p>
+
+        <p>This section is pure SwiftUI. We'll build a reusable <code>SpectrumView</code> component, then compose it into a dark-themed <code>ContentView</code> alongside the note readout, a VU meter strip, and a start/stop button. By the end, you'll have a fully working spectrum analyzer on screen.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="spectrum-view-component">SpectrumView &mdash; A Reusable Component</h2>
+        <!-- ============================================================ -->
+
+        <p>Create a new Swift file: <strong>File &rarr; New &rarr; File &rarr; Swift File</strong>, name it <code>SpectrumView.swift</code>. Here's the complete view:</p>
+
+        <pre><code class="language-swift">import SwiftUI
+
+struct SpectrumView: View {
+    let bars: [Float]
+
+    var body: some View {
+        GeometryReader { geo in
+            let barWidth = geo.size.width / CGFloat(bars.count)
+            let spacing: CGFloat = 1
+
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(bars.indices, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(barColor(index: i, count: bars.count))
+                        .frame(
+                            width: barWidth - spacing,
+                            height: max(2, geo.size.height * CGFloat(bars[i]))
+                        )
+                        .animation(.easeOut(duration: 0.08), value: bars[i])
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+    }
+
+    func barColor(index: Int, count: Int) -&gt; Color {
+        let t = Double(index) / Double(count)
+        return Color(hue: 0.35 - t * 0.35, saturation: 0.9, brightness: 0.9)
+    }
+}</code></pre>
+
+        <p>This is a compact view with a lot going on. Let's take it apart.</p>
+
+        <h3 id="component-design">The Component Model</h3>
+
+        <p><code>SpectrumView</code> is a struct that conforms to <code>View</code>. It has a single input: <code>bars: [Float]</code>. It produces visual output. That's it. No internal state, no audio logic, no knowledge of where the data comes from. If you've used React, this is a functional component with props. If you've used WPF, it's a <code>UserControl</code> with a dependency property.</p>
+
+        <p>This separation is deliberate. <code>SpectrumView</code> can be previewed in isolation, tested with fake data, or reused in a completely different context. You could feed it data from a file, a network stream, or a synthesizer &mdash; it doesn't care. It draws bars.</p>
+
+        <h3 id="geometry-reader">GeometryReader &mdash; Adaptive Layout</h3>
+
+        <p><code>GeometryReader</code> gives us access to the size of the containing view. We used it back in Section 1 &mdash; here it's essential for calculating bar widths. <code>geo.size.width</code> is the available width in points, and dividing by <code>bars.count</code> gives us the width per bar. This means the view adapts automatically to any screen size: iPhone SE, iPhone 16 Pro Max, iPad, even a Mac via Catalyst. No hardcoded widths anywhere.</p>
+
+        <p>The bar height is <code>geo.size.height * CGFloat(bars[i])</code>, where <code>bars[i]</code> is our 0-to-1 normalized value from the DSP pipeline. A value of 1.0 fills the full height. A value of 0.0 would be invisible, which is why we use <code>max(2, ...)</code> to ensure even silent bars have a 2-point baseline. This visible baseline gives the user a sense of the frequency axis even when the room is quiet.</p>
+
+        <h3 id="foreach-and-identity">ForEach and Identity</h3>
+
+        <pre><code class="language-swift">ForEach(bars.indices, id: \.self) { i in</code></pre>
+
+        <p>SwiftUI's <code>ForEach</code> is not a plain loop &mdash; it's a view builder that needs to track which item is which across updates. The <code>id: \.self</code> parameter tells SwiftUI to use the index itself as the identity. Since our bar count is fixed at 48, the indices are stable: bar 0 is always the lowest frequency, bar 47 is always the highest. SwiftUI can then efficiently update just the bars whose values changed, rather than rebuilding the entire stack.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>In WPF, you'd bind an <code>ItemsControl</code> to an <code>ObservableCollection</code> and use a <code>DataTemplate</code> to define the bar's appearance. SwiftUI's <code>ForEach</code> combines the collection binding and the template into a single construct. The <code>id</code> parameter serves the same role as the <code>Key</code> in React or the item identity in a <code>CollectionView</code> &mdash; it tells the framework how to diff updates efficiently.</p>
+        </div>
+
+        <h3 id="hsb-color-gradient">The HSB Color Gradient</h3>
+
+        <pre><code class="language-swift">func barColor(index: Int, count: Int) -&gt; Color {
+    let t = Double(index) / Double(count)
+    return Color(hue: 0.35 - t * 0.35, saturation: 0.9, brightness: 0.9)
+}</code></pre>
+
+        <p>This creates a smooth gradient from green (low frequencies) to red (high frequencies) across the 48 bars. The <code>hue</code> parameter uses the HSB (Hue-Saturation-Brightness) color model, where hue is a value from 0 to 1 representing a position on the color wheel. Green is at ~0.33, yellow at ~0.17, and red at 0.0.</p>
+
+        <p>By setting hue to <code>0.35 - t * 0.35</code>, we start slightly past green (hue 0.35) for the first bar and sweep down to red (hue 0.0) for the last. The <code>saturation: 0.9</code> keeps colors vivid without being neon. <code>brightness: 0.9</code> keeps them visible against our black background without being blinding.</p>
+
+        <p>This green-to-red gradient mirrors real hardware spectrum analyzers and audio meters. It's not just decorative &mdash; it gives the user instant visual feedback about which frequency range is active. A bass-heavy sound lights up the green bars on the left. Sibilance or cymbal hits light up the red bars on the right.</p>
+
+        <h3 id="per-bar-animation">Per-Bar Animation</h3>
+
+        <pre><code class="language-swift">.animation(.easeOut(duration: 0.08), value: bars[i])</code></pre>
+
+        <p>This is where the bars come to life. The <code>.animation</code> modifier tells SwiftUI to animate any change to the bar's height with an ease-out curve over 80 milliseconds. "Ease out" means the bar snaps up quickly and settles slowly &mdash; exactly the behavior you want for an audio meter. A sudden loud sound makes the bar jump instantly, then it glides back down smoothly when the sound fades.</p>
+
+        <p>The 80ms duration was chosen to feel responsive without being jittery. Faster (say, 30ms) and the bars vibrate nervously. Slower (say, 200ms) and the display feels sluggish, unable to keep up with the music. 80ms is the Goldilocks zone for real-time audio visualization.</p>
+
+        <p>The <code>value: bars[i]</code> parameter scopes the animation to changes in <em>that specific bar's value</em>. Without it, any state change anywhere in the view hierarchy could trigger the animation. With it, each bar animates independently &mdash; bar 12 can be rising while bar 30 is falling.</p>
+
+        <h3 id="bottom-alignment">Bottom Alignment</h3>
+
+        <pre><code class="language-swift">HStack(alignment: .bottom, spacing: spacing) { ... }
+.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)</code></pre>
+
+        <p>Two things work together here. The <code>HStack</code> aligns its children to the bottom edge, so bars grow upward from a shared baseline. The <code>.frame</code> modifier expands the stack to fill all available space and pins it to the bottom of the <code>GeometryReader</code>. Without <code>alignment: .bottom</code> on the frame, the bars would float in the vertical center &mdash; which looks strange for a spectrum analyzer that should feel grounded.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-complete-content-view">The Complete Dark-Themed ContentView</h2>
+        <!-- ============================================================ -->
+
+        <p>Now let's compose the full screen. Open <code>ContentView.swift</code> and replace its contents:</p>
+
+        <pre><code class="language-swift">import SwiftUI
+
+struct ContentView: View {
+    @State private var audio = AudioEngine()
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                VStack(spacing: 4) {
+                    Text(audio.peakNote)
+                        .font(.system(size: 48, weight: .thin, design: .monospaced))
+                        .foregroundStyle(.white)
+                    Text(audio.peakHz &gt; 30 ? String(format: "%.1f Hz", audio.peakHz) : "&#x2014;")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.gray)
+                }
+                .frame(height: 80)
+
+                SpectrumView(bars: audio.spectrumBars)
+                    .frame(height: 200)
+                    .padding(.horizontal, 16)
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.1))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(vuColor(level: audio.level))
+                            .frame(width: geo.size.width * CGFloat(audio.level))
+                            .animation(.easeOut(duration: 0.05), value: audio.level)
+                    }
+                }
+                .frame(height: 12)
+                .padding(.horizontal, 16)
+
+                Button(audio.isRunning ? "Stop" : "Start") {
+                    audio.isRunning ? audio.stop() : audio.start()
+                }
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 48)
+                .padding(.vertical, 12)
+                .background(audio.isRunning ? Color.red : Color.green)
+                .clipShape(Capsule())
+            }
+            .padding(.vertical, 40)
+        }
+    }
+
+    func vuColor(level: Float) -&gt; Color {
+        switch level {
+        case 0..&lt;0.6:    return .green
+        case 0.6..&lt;0.85: return .yellow
+        default:          return .red
+        }
+    }
+}</code></pre>
+
+        <p>This is the entire screen &mdash; every pixel of the app's UI. Let's walk through the composition from top to bottom.</p>
+
+        <h3 id="dark-background">The Dark Background</h3>
+
+        <pre><code class="language-swift">ZStack {
+    Color.black.ignoresSafeArea()
+    // ... content ...
+}</code></pre>
+
+        <p>A <code>ZStack</code> layers views on top of each other, back to front. The first layer is a solid black <code>Color</code> that extends into the safe area (behind the notch and home indicator). Everything else sits on top. This is the standard pattern for full-screen dark backgrounds in SwiftUI. Without <code>.ignoresSafeArea()</code>, you'd see the system background color peeking out at the top and bottom.</p>
+
+        <h3 id="peak-note-display">The Peak Note Display</h3>
+
+        <pre><code class="language-swift">VStack(spacing: 4) {
+    Text(audio.peakNote)
+        .font(.system(size: 48, weight: .thin, design: .monospaced))
+        .foregroundStyle(.white)
+    Text(audio.peakHz &gt; 30 ? String(format: "%.1f Hz", audio.peakHz) : "&#x2014;")
+        .font(.system(.caption, design: .monospaced))
+        .foregroundStyle(.gray)
+}
+.frame(height: 80)</code></pre>
+
+        <p>The top section shows the detected note name in large, thin, monospaced type &mdash; "A4", "C#3", or an em-dash when no clear pitch is detected. Below it, in smaller gray text, the raw frequency in Hz. The <code>.frame(height: 80)</code> reserves a fixed height so the layout doesn't jump around as the note name changes.</p>
+
+        <p>The font specification <code>.system(size: 48, weight: .thin, design: .monospaced)</code> demonstrates SwiftUI's typography API. You can specify size, weight, and design independently. The <code>.thin</code> weight gives the note name an elegant, instrument-like quality. <code>.monospaced</code> ensures character widths are uniform, preventing the text from shifting horizontally when the note changes from, say, "A4" to "G#3".</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>SwiftUI's font system supports <strong>Dynamic Type</strong> automatically. If the user has increased their system text size in Settings &rarr; Accessibility, fonts specified with semantic sizes like <code>.caption</code> will scale accordingly. Fixed-point sizes like <code>size: 48</code> don't scale, which is intentional here &mdash; the note display has a fixed layout that shouldn't reflow. For text-heavy apps you'd want to use semantic sizes everywhere, but for a data display like ours, mixing fixed and dynamic sizes is fine.</p>
+        </div>
+
+        <h3 id="spectrum-display">The Spectrum Display</h3>
+
+        <pre><code class="language-swift">SpectrumView(bars: audio.spectrumBars)
+    .frame(height: 200)
+    .padding(.horizontal, 16)</code></pre>
+
+        <p>Our reusable <code>SpectrumView</code> component, given 200 points of height and 16 points of horizontal padding. That's it. The component handles everything else internally &mdash; bar widths, colors, animation, bottom alignment. This is the payoff of building it as a self-contained component: embedding it is one line.</p>
+
+        <h3 id="vu-meter-strip">The VU Meter Strip</h3>
+
+        <pre><code class="language-swift">GeometryReader { geo in
+    ZStack(alignment: .leading) {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.white.opacity(0.1))
+        RoundedRectangle(cornerRadius: 4)
+            .fill(vuColor(level: audio.level))
+            .frame(width: geo.size.width * CGFloat(audio.level))
+            .animation(.easeOut(duration: 0.05), value: audio.level)
+    }
+}
+.frame(height: 12)
+.padding(.horizontal, 16)</code></pre>
+
+        <p>This is a horizontal VU meter &mdash; a thin strip that shows the overall audio level. Two rectangles are layered in a <code>ZStack</code>: the back one is a dim white track (10% opacity), and the front one is a colored fill whose width is proportional to the audio level. At 12 points tall, it's a subtle accent beneath the spectrum bars, not a competing visual element.</p>
+
+        <p>The <code>vuColor</code> function changes the fill color based on level: green below 60%, yellow from 60-85%, and red above 85%. This traffic-light pattern is universal in audio &mdash; every mixing console, every DAW, every hardware meter uses some variation of green/yellow/red to indicate signal health. Green means "good signal." Yellow means "getting loud." Red means "clipping is imminent."</p>
+
+        <p>The animation duration here is 50ms, faster than the spectrum bars' 80ms. The VU meter should feel snappy and immediate &mdash; it's tracking overall level, not frequency detail, and users expect level meters to react almost instantly.</p>
+
+        <h3 id="start-stop-button">The Start/Stop Button</h3>
+
+        <pre><code class="language-swift">Button(audio.isRunning ? "Stop" : "Start") {
+    audio.isRunning ? audio.stop() : audio.start()
+}
+.font(.system(size: 16, weight: .medium))
+.foregroundStyle(.black)
+.padding(.horizontal, 48)
+.padding(.vertical, 12)
+.background(audio.isRunning ? Color.red : Color.green)
+.clipShape(Capsule())</code></pre>
+
+        <p>A pill-shaped button that toggles the audio engine. The label and background color both change based on state: green "Start" when stopped, red "Stop" when running. The <code>.clipShape(Capsule())</code> modifier clips the rectangle to a capsule (a rectangle with fully rounded ends). Black text on a colored background ensures readability on both states.</p>
+
+        <p>The modifier chain here is worth studying. Each modifier wraps the previous view:</p>
+
+        <ol>
+            <li><code>.font</code> sets the text style.</li>
+            <li><code>.foregroundStyle</code> sets the text color.</li>
+            <li><code>.padding</code> adds internal spacing (this determines the button's tap target size).</li>
+            <li><code>.background</code> fills behind the padded content.</li>
+            <li><code>.clipShape</code> clips the background to the capsule shape.</li>
+        </ol>
+
+        <p>Order matters. If you moved <code>.background</code> before <code>.padding</code>, the color would only fill the text area, not the padded region. The modifier chain reads like a sequence of wrapping operations, inside out.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>If the modifier ordering feels confusing, try this mental model: imagine each modifier creates a new box around the previous one. <code>Text("Start")</code> is the innermost box. <code>.padding(.horizontal, 48)</code> adds a larger box with 48 points of space on the sides. <code>.background(Color.green)</code> paints the background of <em>that</em> larger box. <code>.clipShape(Capsule())</code> trims the corners of the painted box. Visualize the nesting and the order becomes intuitive.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="the-layout-composition">Understanding the Layout Composition</h2>
+        <!-- ============================================================ -->
+
+        <p>Step back and look at the full <code>ContentView</code> as a layout diagram:</p>
+
+        <div class="diagram">
+  ┌─────────────────────────────────────┐
+  │        <em>ZStack</em> (full screen)          │
+  │  ┌───────────────────────────────┐  │
+  │  │   Color.black (background)    │  │
+  │  └───────────────────────────────┘  │
+  │  ┌───────────────────────────────┐  │
+  │  │  <em>VStack</em> (spacing: 24)          │  │
+  │  │                               │  │
+  │  │  ┌───── Note Display ──────┐  │  │
+  │  │  │     <em>A4</em>                  │  │  │
+  │  │  │    440.0 Hz             │  │  │
+  │  │  └─────────────────────────┘  │  │
+  │  │                               │  │
+  │  │  ┌── SpectrumView (48 bars)─┐ │  │
+  │  │  │  <em>| || ||| || | |||| |</em>    │ │  │
+  │  │  │  <em>|||||||||||||||||||||</em>    │ │  │
+  │  │  └──────────────────────────┘ │  │
+  │  │                               │  │
+  │  │  ┌──── VU Strip (12pt) ─────┐ │  │
+  │  │  │ <em>&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;</em>             │ │  │
+  │  │  └──────────────────────────┘ │  │
+  │  │                               │  │
+  │  │       ┌──────────────┐        │  │
+  │  │       │  <em>Start/Stop</em>  │        │  │
+  │  │       └──────────────┘        │  │
+  │  └───────────────────────────────┘  │
+  └─────────────────────────────────────┘</div>
+
+        <p>The entire UI is four elements in a vertical stack, centered on a black background. No navigation controllers, no tab bars, no scroll views. Just a clean, focused, single-screen app. The 24-point spacing between elements gives everything room to breathe.</p>
+
+        <p>The <code>.padding(.vertical, 40)</code> on the <code>VStack</code> pushes the content away from the screen edges at the top and bottom, while the individual <code>.padding(.horizontal, 16)</code> modifiers on the spectrum and VU strip handle the side margins. The button doesn't need horizontal padding from the screen edge because <code>.padding(.horizontal, 48)</code> on the button itself creates generous internal padding that naturally keeps it away from the edges.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="swiftui-font-system">A Note on the SwiftUI Font System</h2>
+        <!-- ============================================================ -->
+
+        <p>This view uses several different font configurations, so it's a good moment to catalog what's available. SwiftUI provides two ways to specify fonts:</p>
+
+        <p><strong>Semantic sizes</strong> that adapt to the user's Dynamic Type setting:</p>
+
+        <ul>
+            <li><code>.largeTitle</code>, <code>.title</code>, <code>.title2</code>, <code>.title3</code></li>
+            <li><code>.headline</code>, <code>.subheadline</code></li>
+            <li><code>.body</code> (the default)</li>
+            <li><code>.callout</code>, <code>.caption</code>, <code>.caption2</code></li>
+            <li><code>.footnote</code></li>
+        </ul>
+
+        <p><strong>Explicit sizes</strong> with full control via <code>.system(size:weight:design:)</code>:</p>
+
+        <ul>
+            <li><code>size</code> &mdash; point size (does not scale with Dynamic Type)</li>
+            <li><code>weight</code> &mdash; <code>.ultraLight</code>, <code>.thin</code>, <code>.light</code>, <code>.regular</code>, <code>.medium</code>, <code>.semibold</code>, <code>.bold</code>, <code>.heavy</code>, <code>.black</code></li>
+            <li><code>design</code> &mdash; <code>.default</code> (San Francisco), <code>.monospaced</code> (SF Mono), <code>.rounded</code> (SF Rounded), <code>.serif</code> (New York)</li>
+        </ul>
+
+        <p>Our app uses <code>.monospaced</code> extensively because numerical displays should never jitter. When a value changes from "440.0" to "1200.5", every digit occupies the same width in a monospaced font, so the text stays perfectly still and only the characters change. With a proportional font, the text would shift left and right with every update &mdash; visually distracting for a real-time display.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="putting-it-all-together">Build and Run</h2>
+        <!-- ============================================================ -->
+
+        <p>Hit <kbd>Cmd</kbd>+<kbd>R</kbd>. You should see a black screen with a green "Start" button. Tap it. The microphone activates (you may need to grant permission), and the spectrum bars start bouncing. The VU strip tracks the overall level. The note display shows whatever pitch is dominant.</p>
+
+        <p>Try these experiments:</p>
+
+        <ul>
+            <li><strong>Sing a steady note.</strong> Watch a cluster of bars near the corresponding frequency light up. The note display should identify the pitch. Try sliding your voice up and down &mdash; the bright spot in the spectrum should follow.</li>
+            <li><strong>Clap your hands.</strong> Claps are broadband &mdash; they have energy across the entire spectrum. You should see all 48 bars spike briefly, with the VU strip flashing red.</li>
+            <li><strong>Play music from another device.</strong> Hold your phone near a speaker. You'll see the spectral content of the music in real time &mdash; bass notes light up the green bars on the left, vocals fill the middle, and hi-hats and cymbals light up the red bars on the right.</li>
+            <li><strong>Silence.</strong> In a quiet room, you should see the bars at their minimum height (the 2-point baseline) and the note display showing an em-dash. The VU strip should be dark.</li>
+        </ul>
+
+        <div class="callout callout-both">
+            <div class="callout-title">Integration Point</div>
+            <p>Notice how the entire data flow is reactive. The audio tap fires, the analyzer processes the buffer, the results are published to <code>@Observable</code> properties, and SwiftUI automatically redraws only the views that depend on changed values. You never explicitly told SwiftUI "redraw bar 17." You just updated the data, and the framework figured out the rest. This is the same reactive pattern as WPF data binding, but with less boilerplate and more compiler safety.</p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>Build and run. You now have a working spectrum analyzer with note detection. The screen should show 48 colored bars that bounce in response to sound, a note name and frequency readout at the top, a VU strip below the spectrum, and a Start/Stop button. Try singing a steady note &mdash; the peak note display should identify it. Play music and watch the spectrum dance. If all of that is working, congratulations &mdash; the hard part is done. Everything from here is polish.</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section06">&larr; Previous</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section08">Next &rarr;</a>
+        </nav>

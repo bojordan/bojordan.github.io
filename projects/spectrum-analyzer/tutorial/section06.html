@@ -1,0 +1,408 @@
+---
+layout: spectrum
+title: "Building the Spectrum Analyzer — Building a Spectrum Analyzer for iPhone"
+permalink: /projects/spectrum-analyzer/tutorial/section06
+---
+
+
+        <h1><span class="section-number">6.</span> Building the Spectrum Analyzer <span class="tag tag-both">Both</span></h1>
+
+        <p>Section 5 gave you the theory. Now we write the code. By the end of this section, you'll have a <code>SpectrumAnalyzer</code> struct that takes a buffer of raw audio samples and returns an array of bar heights ready for display. Every line maps directly to a concept from the previous section &mdash; windowing, FFT, magnitude computation, log-frequency grouping. If anything feels unfamiliar, flip back to Section 5.</p>
+
+        <p>We'll also add peak frequency detection and a MIDI-based note name converter, then wire the whole thing into <code>AudioEngine</code>. At the end, the audio engine will publish spectrum data alongside the VU level you've already built.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-spectrum-analyzer-struct">The SpectrumAnalyzer Struct</h2>
+        <!-- ============================================================ -->
+
+        <p>Create a new Swift file in Xcode: <strong>File &rarr; New &rarr; File &rarr; Swift File</strong>, name it <code>SpectrumAnalyzer.swift</code>. Here's the struct and its initializer:</p>
+
+        <pre><code class="language-swift">import Accelerate
+
+struct SpectrumAnalyzer {
+    let binCount: Int
+    let sampleRate: Double
+    private let fftSize: Int
+    private let halfSize: Int
+    private var fftSetup: vDSP.FFT&lt;DSPSplitComplex&gt;?
+    private var window: [Float]
+
+    init(binCount: Int = 48, sampleRate: Double = 44100, fftSize: Int = 4096) {
+        self.binCount = binCount
+        self.sampleRate = sampleRate
+        self.fftSize = fftSize
+        self.halfSize = fftSize / 2
+
+        self.window = vDSP.window(ofType: Float.self,
+                                  usingSequence: .hanningDenormalized,
+                                  count: fftSize,
+                                  isHalfWindow: false)
+
+        let log2n = vDSP_Length(log2(Float(fftSize)))
+        self.fftSetup = vDSP.FFT(log2n: log2n,
+                                 radix: .radix2,
+                                 ofType: DSPSplitComplex.self)
+    }
+}</code></pre>
+
+        <p>Let's walk through each piece.</p>
+
+        <h3 id="public-configuration">Public Configuration</h3>
+
+        <p><code>binCount</code> is the number of bars in our display &mdash; 48 by default. That's enough to show meaningful frequency detail without making each bar too thin on a phone screen. <code>sampleRate</code> matches the audio engine's rate (44,100 Hz is the iOS default). <code>fftSize</code> is 4096 &mdash; the sweet spot we discussed in Section 5.</p>
+
+        <p><code>halfSize</code> is <code>fftSize / 2</code> (2048). We'll use this everywhere &mdash; it's the number of frequency bins the FFT produces.</p>
+
+        <h3 id="the-hann-window">The Hann Window</h3>
+
+        <pre><code class="language-swift">self.window = vDSP.window(ofType: Float.self,
+                          usingSequence: .hanningDenormalized,
+                          count: fftSize,
+                          isHalfWindow: false)</code></pre>
+
+        <p>This pre-computes the 4096-element Hann window we described in Section 5. The Accelerate framework generates the array of window coefficients for us &mdash; no manual cosine math needed. We store it as a property because the window never changes: we'll multiply it against every incoming buffer, and recomputing it each time would be wasteful.</p>
+
+        <p><code>.hanningDenormalized</code> is Accelerate's name for the standard Hann window. The "denormalized" part means the values range from 0 to 1 without any energy-correction scaling. <code>isHalfWindow: false</code> means we want the full symmetric window, not just the first half.</p>
+
+        <h3 id="fft-setup">The FFT Setup Object</h3>
+
+        <pre><code class="language-swift">let log2n = vDSP_Length(log2(Float(fftSize)))
+self.fftSetup = vDSP.FFT(log2n: log2n,
+                         radix: .radix2,
+                         ofType: DSPSplitComplex.self)</code></pre>
+
+        <p>This creates an FFT "plan" &mdash; a pre-computed data structure that Accelerate uses to execute the FFT efficiently. Think of it like compiling a regular expression before using it in a loop: you pay the setup cost once, then every subsequent FFT runs faster because the plan already knows the optimal memory layout and butterfly operations for this size.</p>
+
+        <p>The <code>log2n</code> parameter is the base-2 logarithm of the FFT size. For 4096, that's 12. Accelerate requires FFT sizes that are powers of 2 (hence "radix 2"), which is why we chose 4096 and not, say, 4000.</p>
+
+        <div class="callout callout-both">
+            <div class="callout-title">Integration Point</div>
+            <p>Pre-computing the window and FFT setup in <code>init</code> is important for real-time performance. Audio buffers arrive every ~93ms. If we had to allocate arrays and build FFT plans on every callback, we'd introduce jitter and potentially drop frames. By doing all allocation upfront, the per-buffer processing path is fast and allocation-free. This is the same principle as object pooling in C# game development &mdash; allocate once, reuse forever.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="the-process-method">The process() Method &mdash; Step by Step</h2>
+        <!-- ============================================================ -->
+
+        <p>This is the core of the spectrum analyzer. The <code>process</code> method takes a raw audio buffer and returns an array of magnitudes &mdash; one per FFT bin. We'll build it in four numbered steps that correspond directly to the pipeline from Section 5.</p>
+
+        <h3 id="step-1-padding-and-windowing">Step 1: Padding and Windowing</h3>
+
+        <pre><code class="language-swift">mutating func process(buffer: [Float]) -&gt; [Float] {
+    // Step 1: Pad to fftSize if needed, then apply Hann window
+    var samples = Array(buffer.prefix(fftSize))
+    if samples.count &lt; fftSize {
+        samples += Array(repeating: 0, count: fftSize - samples.count)
+    }
+    vDSP.multiply(samples, window, result: &amp;samples)</code></pre>
+
+        <p>First, we take up to <code>fftSize</code> samples from the incoming buffer. If the buffer is shorter than 4096 (which can happen at startup or with certain audio configurations), we pad it with zeros. Zero-padding doesn't add information, but it ensures the FFT always gets the size it expects.</p>
+
+        <p>Then comes the windowing: <code>vDSP.multiply</code> performs element-wise multiplication of the samples with our pre-computed Hann window. Sample 0 gets multiplied by ~0 (the window is near-zero at the edges). Sample 2048 gets multiplied by ~1.0 (the window peaks at the center). This is the spectral leakage prevention from Section 5, implemented as a single function call.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>In C#, element-wise array multiplication would look like <code>for (int i = 0; i &lt; N; i++) samples[i] *= window[i];</code> or maybe a LINQ <code>Zip</code>. The <code>vDSP.multiply</code> call does the same thing but uses SIMD instructions under the hood &mdash; it processes 4 or 8 floats per CPU cycle. For 4096 elements, this is essentially free.</p>
+        </div>
+
+        <h3 id="step-2-split-complex-packing">Step 2: Split Complex Packing</h3>
+
+        <pre><code class="language-swift">    // Step 2: Pack into split complex format for vDSP
+    var reals = [Float](repeating: 0, count: halfSize)
+    var imags = [Float](repeating: 0, count: halfSize)
+    let magnitudes: [Float] = reals.withUnsafeMutableBufferPointer { realsBP in
+        imags.withUnsafeMutableBufferPointer { imagsBP in
+            var splitComplex = DSPSplitComplex(realp: realsBP.baseAddress!,
+                                               imagp: imagsBP.baseAddress!)
+            samples.withUnsafeBytes { ptr in
+                let floatPtr = ptr.bindMemory(to: DSPComplex.self)
+                vDSP_ctoz(floatPtr.baseAddress!, 2, &amp;splitComplex, 1,
+                          vDSP_Length(halfSize))
+            }</code></pre>
+
+        <p>This is the gnarliest part of the code, so let's take it slowly.</p>
+
+        <p>Accelerate's FFT doesn't work with a plain array of floats. It wants data in <strong>split complex format</strong> &mdash; separate arrays for real parts and imaginary parts. For our real-valued input, the "imaginary" parts start as zeros. The <code>vDSP_ctoz</code> function converts from interleaved format (alternating real/imaginary pairs) to split format (one array of reals, one array of imaginaries).</p>
+
+        <p>All the <code>withUnsafeMutableBufferPointer</code> and <code>withUnsafeBytes</code> wrappers are Swift's safety system making you explicitly opt into raw pointer access. Swift doesn't let you take a pointer to an array's memory without these wrappers &mdash; they guarantee the array stays alive and pinned in memory for the duration of the closure. If you've used C#'s <code>fixed</code> statement to pin a managed array for P/Invoke, this is the same idea. If you've used <code>Unsafe.As&lt;T&gt;</code> or <code>Span&lt;T&gt;</code> with <code>MemoryMarshal</code>, same family of concepts.</p>
+
+        <p>The <code>!</code> after <code>baseAddress</code> is a force-unwrap. <code>baseAddress</code> returns an optional pointer that's <code>nil</code> only if the buffer is empty &mdash; and we just created non-empty arrays, so this is safe. In production code, you might add a guard, but here we know the sizes are correct.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>The <code>withUnsafe*</code> pattern is Swift's way of saying: "I know you need raw pointers for this C-level API. I'll let you have them, but only inside this scope, and I'll manage the memory lifetime for you." It's verbose but safe. Once you've written it a couple of times, it becomes muscle memory. The Accelerate framework is a C API with a Swift overlay, so pointer wrangling at the boundary is unavoidable.</p>
+        </div>
+
+        <h3 id="step-3-forward-fft">Step 3: Forward FFT</h3>
+
+        <pre><code class="language-swift">            // Step 3: Execute the FFT
+            fftSetup?.forward(input: splitComplex, output: &amp;splitComplex)</code></pre>
+
+        <p>One line. All the theory from Section 5 &mdash; the decomposition of a time-domain signal into frequency components, the O(N log N) butterfly algorithm, the complex exponentials &mdash; happens right here. The 4096 windowed samples go in, and the split complex arrays now contain 2048 frequency bins, each with real and imaginary parts.</p>
+
+        <p>We're doing the FFT in-place (<code>output: &amp;splitComplex</code> points to the same memory as the input). This saves an allocation. The <code>reals</code> and <code>imags</code> arrays, which started as our packed input, now hold the FFT output.</p>
+
+        <h3 id="step-4-compute-magnitudes">Step 4: Compute Magnitudes</h3>
+
+        <pre><code class="language-swift">            // Step 4: Compute magnitudes and normalize
+            var mags = [Float](repeating: 0, count: halfSize)
+            vDSP.absolute(splitComplex, result: &amp;mags)
+            vDSP.multiply(1.0 / Float(fftSize), mags, result: &amp;mags)
+            return mags
+        }
+    }
+}</code></pre>
+
+        <p><code>vDSP.absolute</code> computes <code>sqrt(real&sup2; + imag&sup2;)</code> for each bin &mdash; that's the magnitude, which tells us the amplitude of each frequency component. We then divide by <code>fftSize</code> to normalize the values. Without normalization, the magnitudes scale with the FFT size, and doubling N would double all your values even though the signal didn't change.</p>
+
+        <p>The result is an array of 2048 floats. Each float represents the normalized amplitude at its corresponding frequency bin. Bin 0 is 0 Hz (DC), bin 1 is ~10.77 Hz, bin 2 is ~21.5 Hz, and so on up to bin 2047 at ~22,050 Hz (Nyquist).</p>
+
+        <p>That's the complete FFT pipeline in four steps. Take a buffer, window it, FFT it, compute magnitudes. About 15 lines of actual logic, wrapped in the pointer-safety boilerplate that Swift requires for C interop.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="log-spaced-bars">Log-Spaced Bars</h2>
+        <!-- ============================================================ -->
+
+        <p>We now have 2048 linearly-spaced frequency bins. We could display them directly &mdash; one thin bar per bin, 2048 bars total. That would be technically accurate and visually useless. Here's why.</p>
+
+        <p>FFT bins are linearly spaced: each bin is ~10.77 Hz wide. But human hearing is <em>logarithmic</em>. We perceive the distance between 100 Hz and 200 Hz (one octave) as the same as the distance between 1000 Hz and 2000 Hz (also one octave), even though the second span is ten times wider in Hz. On a linear frequency scale:</p>
+
+        <ul>
+            <li>The first octave (60-120 Hz) spans about <strong>6 bins</strong></li>
+            <li>The last octave (9000-18000 Hz) spans about <strong>836 bins</strong></li>
+        </ul>
+
+        <p>If you gave each bin equal visual weight, bass would be a thin sliver on the left and treble would dominate the entire display. That's the opposite of how we hear. Log spacing fixes this by giving each <em>octave</em> roughly equal visual width.</p>
+
+        <p>Add this method to <code>SpectrumAnalyzer</code>:</p>
+
+        <pre><code class="language-swift">private func logSpacedBars(magnitudes: [Float]) -&gt; [Float] {
+    let minFreq: Float = 60
+    let maxFreq: Float = 18000
+    let logMin = log10(minFreq)
+    let logMax = log10(maxFreq)
+
+    return (0..&lt;binCount).map { i in
+        let logLow  = logMin + Float(i)     / Float(binCount) * (logMax - logMin)
+        let logHigh = logMin + Float(i + 1) / Float(binCount) * (logMax - logMin)
+        let freqLow  = pow(10, logLow)
+        let freqHigh = pow(10, logHigh)
+
+        let binLow  = Int(freqLow  / Float(sampleRate) * Float(fftSize))
+        let binHigh = Int(freqHigh / Float(sampleRate) * Float(fftSize))
+        let slice = magnitudes[max(0, binLow)...min(magnitudes.count - 1, max(binLow, binHigh))]
+
+        let rms = slice.isEmpty ? 0 : slice.reduce(0, +) / Float(slice.count)
+        let db = 20 * log10(max(rms, 1e-9))
+        let normalized = (db + 80) / 80
+        return max(0, min(1, normalized))
+    }
+}</code></pre>
+
+        <p>Let's trace through the logic.</p>
+
+        <h3 id="frequency-range">Frequency Range</h3>
+
+        <p>We define a display range of 60 Hz to 18,000 Hz. Below 60 Hz there's mostly rumble and DC offset. Above 18,000 Hz, most adults can't hear anything. These boundaries become the left and right edges of our spectrum display.</p>
+
+        <h3 id="log-division">Logarithmic Division</h3>
+
+        <p>The key trick: we divide the frequency range in <em>log space</em>, not linear space. <code>log10(60) &asymp; 1.78</code>, <code>log10(18000) &asymp; 4.26</code>. We divide this log range into 48 equal slices. Each slice covers the same <em>ratio</em> of frequencies. Bar 0 might cover 60-72 Hz. Bar 47 might cover 15,000-18,000 Hz. In linear Hz, bar 47's range is 250 times wider than bar 0's. In perceptual terms, they're similar &mdash; each is roughly a fraction of an octave.</p>
+
+        <h3 id="bin-mapping">Bin Mapping</h3>
+
+        <p>For each display bar, we convert its frequency bounds to FFT bin indices: <code>bin = frequency * fftSize / sampleRate</code>. This tells us which FFT bins fall within this bar's frequency range. We then take the average magnitude of those bins.</p>
+
+        <p>For the lowest bars, this might be just 1-2 FFT bins. For the highest bars, it could be dozens or hundreds. That's fine &mdash; we're averaging them down to a single value per bar.</p>
+
+        <h3 id="db-conversion-and-normalization">dB Conversion and Normalization</h3>
+
+        <p>The raw magnitudes from the FFT span a huge dynamic range. A quiet room might produce magnitudes of 0.0001 while a loud clap produces 0.5. Displaying these linearly would mean quiet sounds are invisible. So we convert to decibels: <code>20 * log10(magnitude)</code>. This compresses the range to something manageable.</p>
+
+        <p>The <code>(db + 80) / 80</code> normalization maps the range -80 dB to 0 dB onto the range 0.0 to 1.0. Anything below -80 dB (effectively silence) clips to 0. Anything at 0 dB (full scale) maps to 1.0. The result is a value we can directly use as a bar height.</p>
+
+        <p>The <code>max(rms, 1e-9)</code> guard prevents <code>log10(0)</code>, which would be negative infinity. A magnitude of 1e-9 corresponds to about -180 dB &mdash; so far below the noise floor it's irrelevant.</p>
+
+        <div class="callout callout-dsp">
+            <div class="callout-title">DSP Concept</div>
+            <p>The 80 dB display range is a common choice for spectrum analyzers. It means the tallest bar is about 10,000 times louder (in amplitude) than the shortest visible bar. Professional audio tools sometimes use 90 or 120 dB ranges, but 80 dB is a good balance for a phone screen where you want quiet content to still be visible.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="peak-frequency-detection">Peak Frequency Detection</h2>
+        <!-- ============================================================ -->
+
+        <p>Finding the dominant frequency in the spectrum is straightforward: find the bin with the highest magnitude, then convert its index to Hz.</p>
+
+        <pre><code class="language-swift">let peakBin = magnitudes.indices.max(by: { magnitudes[$0] &lt; magnitudes[$1] }) ?? 0
+let peakHz = Float(peakBin) * Float(sampleRate) / Float(fftSize)</code></pre>
+
+        <p>The formula is just the inverse of the bin-to-frequency mapping: <code>frequency = binIndex * (sampleRate / fftSize)</code>. With our parameters, that's <code>binIndex * 10.77</code>. If the loudest bin is bin 41, the peak frequency is about 441 Hz &mdash; close to the A4 note.</p>
+
+        <h3 id="midi-note-formula">The MIDI Note Formula</h3>
+
+        <p>Showing "441 Hz" is accurate but not very musical. Most people think in note names: "that's an A." Converting a frequency to a note name uses the MIDI numbering system, which assigns every semitone on a piano keyboard a unique integer.</p>
+
+        <pre><code class="language-swift">private func frequencyToNote(_ hz: Float) -&gt; String {
+    let notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+    let midi = Int(round(12 * log2(hz / 440.0) + 69))
+    let note = notes[((midi % 12) + 12) % 12]
+    let octave = (midi / 12) - 1
+    return "\(note)\(octave)"
+}</code></pre>
+
+        <p>This formula is worth understanding because it encodes a fundamental fact about music: pitch is logarithmic.</p>
+
+        <ul>
+            <li><strong>440 Hz = A4 = MIDI note 69.</strong> This is the reference point. A4 is the "tuning A" that orchestras tune to.</li>
+            <li><strong>Every octave doubles the frequency and adds 12 to the MIDI number.</strong> A3 is 220 Hz (MIDI 57), A4 is 440 Hz (MIDI 69), A5 is 880 Hz (MIDI 81). Each step of 12 doubles the frequency.</li>
+            <li><strong><code>12 * log2(hz / 440)</code></strong> gives the distance in semitones from A4. If <code>hz</code> is 880, that's <code>12 * log2(2) = 12</code> &mdash; exactly one octave (12 semitones) above A4.</li>
+            <li><strong><code>+ 69</code></strong> shifts from "distance from A4" to the absolute MIDI scale where A4 is 69.</li>
+            <li><strong><code>round()</code></strong> snaps to the nearest semitone. A frequency of 445 Hz is slightly sharp of A4 but will round to MIDI 69 &mdash; still "A4".</li>
+        </ul>
+
+        <p>The <code>((midi % 12) + 12) % 12</code> double-modulo handles negative MIDI numbers (frequencies below C0) gracefully. The note name comes from a 12-element array indexed by the position within the octave. The octave number is <code>(midi / 12) - 1</code>, following the convention where middle C is C4.</p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>The MIDI numbering system was designed in the 1980s for synthesizers, but it's become the universal way to identify musical pitches in software. If you've ever used a DAW (Digital Audio Workstation), the piano roll view uses MIDI note numbers. The formula above is the standard conversion, used in everything from guitar tuners to music transcription software.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="the-complete-analyze-method">The Complete analyze() Method</h2>
+        <!-- ============================================================ -->
+
+        <p>Now let's combine everything into a public method that takes a raw buffer and returns all the data the UI needs:</p>
+
+        <pre><code class="language-swift">struct AnalysisResult {
+    let bars: [Float]
+    let peakHz: Float
+    let peakNote: String
+}
+
+mutating func analyze(buffer: [Float]) -&gt; AnalysisResult {
+    let magnitudes = process(buffer: buffer)
+
+    let peakBin = magnitudes.indices.max(by: { magnitudes[$0] &lt; magnitudes[$1] }) ?? 0
+    let peakHz = Float(peakBin) * Float(sampleRate) / Float(fftSize)
+    let peakNote = peakHz &gt; 30 ? frequencyToNote(peakHz) : "—"
+
+    let bars = logSpacedBars(magnitudes: magnitudes)
+    return AnalysisResult(bars: bars, peakHz: peakHz, peakNote: peakNote)
+}</code></pre>
+
+        <p>The <code>peakHz &gt; 30</code> guard avoids showing a note name for very low frequencies (below about B0), which are usually just noise or DC offset. We display an em-dash instead.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="updating-audio-engine">Updating AudioEngine.swift</h2>
+        <!-- ============================================================ -->
+
+        <p>The <code>SpectrumAnalyzer</code> struct is pure DSP &mdash; it knows nothing about AVAudioEngine or SwiftUI. To use it, we need to wire it into our existing <code>AudioEngine</code> class. Open <code>AudioEngine.swift</code> and add three new published properties and an analyzer instance:</p>
+
+        <pre><code class="language-swift">// Add these properties alongside the existing `level` property
+var spectrumBars: [Float] = Array(repeating: 0, count: 48)
+var peakHz: Float = 0
+var peakNote: String = "—"
+
+// Add a private analyzer instance
+private var analyzer = SpectrumAnalyzer()</code></pre>
+
+        <p>Then update the audio tap callback to call the analyzer. Inside your existing tap handler, after the RMS/level calculation, add:</p>
+
+        <pre><code class="language-swift">// Inside the tap closure, after computing `level`:
+let samples = Array(UnsafeBufferPointer(start: floatData, count: frameCount))
+var localAnalyzer = self.analyzer
+let result = localAnalyzer.analyze(buffer: samples)
+self.analyzer = localAnalyzer
+
+DispatchQueue.main.async {
+    self.spectrumBars = result.bars
+    self.peakHz = result.peakHz
+    self.peakNote = result.peakNote
+}</code></pre>
+
+        <p>A few things to note here:</p>
+
+        <ul>
+            <li><strong>The <code>var localAnalyzer</code> dance.</strong> Our <code>SpectrumAnalyzer</code> is a struct with a <code>mutating</code> method (<code>process</code>), and we're inside a closure. Swift won't let you call a mutating method on a captured <code>self</code> property directly. The workaround: copy to a local variable, mutate it, copy it back. This is safe because the tap callback is serialized &mdash; only one buffer at a time.</li>
+            <li><strong><code>DispatchQueue.main.async</code></strong> pushes the UI update to the main thread, just like you'd use <code>Dispatcher.Invoke</code> in WPF. SwiftUI requires all state changes to happen on the main thread.</li>
+            <li><strong>The existing <code>level</code> property</strong> still works exactly as before. We're augmenting the audio engine, not replacing anything.</li>
+        </ul>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>The audio tap callback runs on a real-time audio thread. Allocating memory, acquiring locks, or doing anything unpredictable on this thread can cause audio glitches. Our <code>SpectrumAnalyzer</code> does allocate arrays internally (the <code>samples</code>, <code>reals</code>, <code>imags</code>, and <code>mags</code> arrays). For a more production-hardened implementation, you'd pre-allocate all of these as reusable buffers. For a tutorial app, the occasional allocation on a modern iPhone is fast enough not to cause audible problems.</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="limitations-of-peak-bin-detection">Limitations of Peak-Bin Detection</h2>
+        <!-- ============================================================ -->
+
+        <p>Our peak frequency detection &mdash; finding the loudest FFT bin &mdash; works well for simple, single-tone sounds. Whistle into the mic and you'll get an accurate note reading. Play a sine wave from a tone generator app and it'll nail the frequency within half a bin width (~5 Hz).</p>
+
+        <p>But it's a crude technique with real limitations:</p>
+
+        <ul>
+            <li><strong>Chords and polyphony.</strong> When multiple notes play simultaneously, the "loudest bin" is just one of them. The display will jump between notes unpredictably.</li>
+            <li><strong>Harmonics.</strong> A guitar playing A2 (110 Hz) produces strong harmonics at 220, 330, 440, 550 Hz, and beyond. Sometimes a harmonic is louder than the fundamental, and the detector reports the wrong octave.</li>
+            <li><strong>Voice.</strong> Human speech has a complex harmonic structure. The peak bin might correspond to a formant (resonance of the vocal tract) rather than the fundamental pitch.</li>
+            <li><strong>Noise.</strong> In a noisy room, the loudest bin might be ambient noise rather than the signal you care about.</li>
+        </ul>
+
+        <p>Better pitch detection algorithms exist: <strong>autocorrelation</strong>, <strong>YIN</strong>, and <strong>pYIN</strong> are specifically designed to find the fundamental frequency even when harmonics are louder. They work in the time domain rather than the frequency domain and are much more robust for musical signals. We'll revisit this topic in Section 9.</p>
+
+        <p>For now, our peak-bin detector is perfectly good as a display feature. It gives the user a rough idea of what note is dominant, and it adds visual interest to the UI. Just don't try to build a guitar tuner with it.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-complete-pipeline">The Complete Pipeline</h2>
+        <!-- ============================================================ -->
+
+        <p>Let's trace the full journey of an audio buffer from microphone to screen:</p>
+
+        <div class="diagram">
+  1. <em>AVAudioEngine</em> tap delivers 4096 Float samples
+     |
+  2. <em>Hann window</em> applied (element-wise multiply)
+     |
+  3. Samples packed into <em>split complex</em> format
+     |
+  4. <em>vDSP.FFT.forward()</em> &mdash; 4096 time samples &rarr; 2048 freq bins
+     |
+  5. <em>vDSP.absolute()</em> &mdash; complex &rarr; magnitudes
+     |
+  6. <em>logSpacedBars()</em> &mdash; 2048 linear bins &rarr; 48 log-spaced bars
+     |         &bull; Average bins per bar
+     |         &bull; Convert to dB
+     |         &bull; Normalize to 0&ndash;1
+     |
+  7. <em>Peak detection</em> &mdash; find loudest bin &rarr; Hz &rarr; note name
+     |
+  8. <em>DispatchQueue.main</em> &rarr; SwiftUI picks up new bar values</div>
+
+        <p>Every step maps to something we discussed in Section 5. Steps 2-5 are the textbook FFT pipeline. Step 6 is the perceptual correction that makes the display match human hearing. Step 7 is a nice-to-have that gives us the note readout. Step 8 is the iOS plumbing that connects DSP to UI.</p>
+
+        <!-- ============================================================ -->
+        <h2 id="section-summary">Section Summary</h2>
+        <!-- ============================================================ -->
+
+        <p>In this section you:</p>
+
+        <ul>
+            <li>Built a <code>SpectrumAnalyzer</code> struct that turns raw audio into display-ready spectrum data.</li>
+            <li>Implemented the full FFT pipeline: windowing, complex packing, forward FFT, magnitude extraction.</li>
+            <li>Created log-frequency grouping that maps 2048 FFT bins to 48 perceptually-spaced display bars.</li>
+            <li>Added peak frequency detection and MIDI-based note name conversion.</li>
+            <li>Wired the analyzer into <code>AudioEngine</code> so the data flows from mic to model.</li>
+        </ul>
+
+        <p>The data is ready. In Section 7, we'll build the SwiftUI view that displays it &mdash; animated bars, a note readout, and the final dark-themed layout that brings the whole thing to life.</p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>Your project should build without errors. If you add a temporary <code>print(result.bars)</code> in the audio tap callback, you should see arrays of 48 floats scrolling by in the Xcode console when audio is active. The values should be mostly near zero in a quiet room and spike toward 1.0 when you make noise. If you see that, the DSP pipeline is working. The UI comes next.</p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/spectrum-analyzer/tutorial/section05">&larr; Previous</a>
+            <a href="/projects/spectrum-analyzer/tutorial/section07">Next &rarr;</a>
+        </nav>
