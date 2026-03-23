@@ -301,6 +301,110 @@ try session.setActive(true)</code></pre>
         </div>
 
         <!-- ============================================================ -->
+        <h2 id="testing">Testing Your Code</h2>
+
+        <p>Audio processing code is notoriously tricky to test. You cannot easily automate
+        "play a guitar and check the display." But the architecture we chose &mdash; separating
+        <code>SpectrumAnalyzer</code> from <code>AudioEngine</code> &mdash; gives us a clean seam.
+        The analyzer is a pure computation: feed in samples, get back bars and notes. No hardware,
+        no microphone, no audio session. This is the code we test.</p>
+
+        <h3 id="synthetic-signals">Synthetic Test Signals</h3>
+
+        <p>The key insight: you do not need a microphone to test an FFT. You can <strong>generate</strong>
+        perfect sine waves in code and feed them directly to the analyzer. A 440&nbsp;Hz sine wave is just
+        math:</p>
+
+        <pre><code class="language-swift">func sineWave(frequency: Float, sampleRate: Float, count: Int) -> [Float] {
+    (0..&lt;count).map { i in
+        sin(2 * .pi * frequency * Float(i) / sampleRate)
+    }
+}</code></pre>
+
+        <p>This produces a buffer identical to what <code>AVAudioEngine</code> would deliver if a
+        perfect 440&nbsp;Hz tone were playing. No hardware variance, no background noise, no
+        nondeterminism. The test either passes or it does not.</p>
+
+        <h3 id="what-to-test">What to Test</h3>
+
+        <p>With synthetic signals, you can write deterministic tests for every behavior of the
+        analyzer:</p>
+
+        <ul>
+            <li><strong>Peak frequency detection.</strong> Generate a 440&nbsp;Hz sine at 44,100&nbsp;Hz,
+            verify the peak is near 440&nbsp;Hz and the note is &ldquo;A4&rdquo;. Repeat at 48,000&nbsp;Hz.</li>
+            <li><strong>Note mapping across the chromatic scale.</strong> Walk through C4, C#4, D4,
+            &hellip; B4 and verify each frequency maps to the correct note name.</li>
+            <li><strong>Silence.</strong> Feed all zeros &mdash; verify bars are near zero and the
+            note is &ldquo;&mdash;&rdquo;.</li>
+            <li><strong>Short buffers.</strong> Feed 1,024 samples instead of 4,096 &mdash; the analyzer
+            should zero-pad and still detect the frequency.</li>
+            <li><strong>Bar normalization.</strong> Verify every bar is in the 0&hellip;1 range, regardless
+            of input amplitude.</li>
+        </ul>
+
+        <h3 id="regression-test">The Regression Test</h3>
+
+        <p>The most valuable test is the one that would have caught our sample rate bug
+        (<a href="/projects/spectrum-analyzer/tutorial/section08">Section&nbsp;8</a>). If we had written this test
+        on day one:</p>
+
+        <pre><code class="language-swift">func testSampleRateMismatchProducesWrongNote() {
+    // Analyzer thinks sample rate is 44100, but signal was sampled at 48000
+    let wrongAnalyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 44100)
+    let signal = sineWave(frequency: 440, sampleRate: 48000, count: 4096)
+    let (_, _, note) = wrongAnalyzer.process(buffer: signal)
+
+    // 440 Hz signal is misinterpreted as ~409 Hz &rarr; G#4
+    XCTAssertNotEqual(note, "A4")
+}
+
+func testCorrectSampleRateFixesNote() {
+    let analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 48000)
+    let signal = sineWave(frequency: 440, sampleRate: 48000, count: 4096)
+    let (_, _, note) = analyzer.process(buffer: signal)
+
+    XCTAssertEqual(note, "A4")
+}</code></pre>
+
+        <p>The first test <em>documents the bug</em>: it proves that mismatched sample rates produce
+        wrong notes. The second test <em>proves the fix</em>: passing the correct sample rate gives
+        the correct answer. Together, they ensure this bug never comes back.</p>
+
+        <div class="callout callout-both">
+            <div class="callout-title">Test the seams, not the hardware</div>
+            <p>You cannot unit test <code>AVAudioEngine</code> &mdash; it needs a real device and a
+            real microphone. But you <em>can</em> unit test everything downstream of it. By designing
+            <code>SpectrumAnalyzer</code> as a pure struct that takes <code>[Float]</code> and returns
+            results, we made the core logic fully testable. This is not unique to audio: in any app
+            that processes external input (network data, sensor readings, user gestures), separate the
+            I/O from the computation and test the computation directly.</p>
+        </div>
+
+        <h3 id="running-tests">Running Tests in Xcode</h3>
+
+        <p>To run the tests: open the project in Xcode, press <strong>&#8984;U</strong> (or
+        <strong>Product &rarr; Test</strong>). Xcode builds the test target, launches the app in the
+        simulator, injects the test bundle, and runs every method that starts with
+        <code>test</code>. Green checkmarks appear next to passing tests in the Test Navigator
+        (&#8984;6).</p>
+
+        <p>You can also run a single test by clicking the diamond icon in the gutter next to the
+        test method. This is useful when iterating on a failing test &mdash; you do not have to
+        wait for the entire suite.</p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">Coming from C# / NUnit / xUnit</div>
+            <p>XCTest is Apple&rsquo;s built-in test framework &mdash; roughly equivalent to NUnit or
+            xUnit. Test classes inherit from <code>XCTestCase</code>, test methods start with
+            <code>test</code> (no <code>[Test]</code> attribute needed), and assertions use
+            <code>XCTAssert*</code> instead of <code>Assert.*</code>. The lifecycle is familiar:
+            <code>setUp()</code> and <code>tearDown()</code> run before and after each test.
+            There is no separate test runner &mdash; Xcode handles discovery, execution, and
+            reporting.</p>
+        </div>
+
+        <!-- ============================================================ -->
         <h2 id="where-to-go">Where to Go from Here</h2>
 
         <p>You now have a working iOS app and the foundational skills to build more. Here are concrete

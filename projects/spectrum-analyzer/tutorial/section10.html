@@ -22,12 +22,14 @@ permalink: /projects/spectrum-analyzer/tutorial/section10
             <pre>
 VUMeter/
 &#9500;&#9472;&#9472; VUMeter.xcodeproj
-&#9492;&#9472;&#9472; VUMeter/
-    &#9500;&#9472;&#9472; <em>VUMeterApp.swift</em>          &larr; App entry point
-    &#9500;&#9472;&#9472; <em>AudioEngine.swift</em>         &larr; Audio capture + processing
-    &#9500;&#9472;&#9472; <em>SpectrumAnalyzer.swift</em>    &larr; FFT analysis
-    &#9500;&#9472;&#9472; <em>ContentView.swift</em>         &larr; All UI code
-    &#9492;&#9472;&#9472; Assets.xcassets/          &larr; App icon, colors
+&#9500;&#9472;&#9472; VUMeter/
+&#9474;   &#9500;&#9472;&#9472; <em>VUMeterApp.swift</em>          &larr; App entry point
+&#9474;   &#9500;&#9472;&#9472; <em>AudioEngine.swift</em>         &larr; Audio capture + processing
+&#9474;   &#9500;&#9472;&#9472; <em>SpectrumAnalyzer.swift</em>    &larr; FFT analysis
+&#9474;   &#9500;&#9472;&#9472; <em>ContentView.swift</em>         &larr; All UI code
+&#9474;   &#9492;&#9472;&#9472; Assets.xcassets/          &larr; App icon, colors
+&#9492;&#9472;&#9472; VUMeterTests/
+    &#9492;&#9472;&#9472; <em>SpectrumAnalyzerTests.swift</em> &larr; Unit tests
             </pre>
         </div>
 
@@ -394,6 +396,133 @@ struct SpectrumView: View {
             <code>SpectrumView</code> is a separate struct for clarity, but it could live inline.
             The hue-based coloring creates a green-to-red gradient across the 48 bars
             (see <a href="/projects/spectrum-analyzer/tutorial/section07">Section 7</a>).</p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="spectrumanalyzertests-swift">SpectrumAnalyzerTests.swift</h2>
+
+        <p>Unit tests for the spectrum analyzer. These use synthetic sine waves &mdash; no microphone
+        required. The sample rate mismatch tests are regression tests for the bug described in
+        <a href="/projects/spectrum-analyzer/tutorial/section08">Section&nbsp;8</a>. Covered in
+        <a href="/projects/spectrum-analyzer/tutorial/section09">Section&nbsp;9</a>.</p>
+
+        <pre><code class="language-swift">import XCTest
+@testable import VUMeter
+
+final class SpectrumAnalyzerTests: XCTestCase {
+
+    // MARK: - Helpers
+
+    /// Generates a pure sine wave buffer &mdash; no hardware needed.
+    private func sineWave(
+        frequency: Float,
+        sampleRate: Float,
+        count: Int,
+        amplitude: Float = 1.0
+    ) -&gt; [Float] {
+        (0..&lt;count).map { i in
+            amplitude * sin(2 * .pi * frequency * Float(i) / sampleRate)
+        }
+    }
+
+    // MARK: - Peak Frequency Detection
+
+    func testA440At44100() {
+        let analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 44100)
+        let signal = sineWave(frequency: 440, sampleRate: 44100, count: 4096)
+        let (_, peakHz, note) = analyzer.process(buffer: signal)
+
+        XCTAssertEqual(peakHz, 440, accuracy: 12, "Peak should be near 440 Hz")
+        XCTAssertEqual(note, "A4")
+    }
+
+    func testA440At48000() {
+        let analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 48000)
+        let signal = sineWave(frequency: 440, sampleRate: 48000, count: 4096)
+        let (_, peakHz, note) = analyzer.process(buffer: signal)
+
+        XCTAssertEqual(peakHz, 440, accuracy: 12, "Peak should be near 440 Hz")
+        XCTAssertEqual(note, "A4")
+    }
+
+    func testMiddleC() {
+        let analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 44100)
+        let signal = sineWave(frequency: 261.63, sampleRate: 44100, count: 4096)
+        let (_, peakHz, note) = analyzer.process(buffer: signal)
+
+        XCTAssertEqual(peakHz, 261.63, accuracy: 12, "Peak should be near middle C")
+        XCTAssertEqual(note, "C4")
+    }
+
+    // MARK: - Sample Rate Mismatch (Regression Test)
+
+    func testSampleRateMismatchProducesWrongNote() {
+        // THE BUG: analyzer created with 44100 but device runs at 48000.
+        // 440 Hz signal is misinterpreted as ~409 Hz &rarr; G#4
+        let wrongAnalyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 44100)
+        let signal = sineWave(frequency: 440, sampleRate: 48000, count: 4096)
+        let (_, _, note) = wrongAnalyzer.process(buffer: signal)
+
+        XCTAssertNotEqual(note, "A4", "Mismatched sample rate should report wrong note")
+    }
+
+    func testCorrectSampleRateFixesNote() {
+        let correctAnalyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 48000)
+        let signal = sineWave(frequency: 440, sampleRate: 48000, count: 4096)
+        let (_, _, note) = correctAnalyzer.process(buffer: signal)
+
+        XCTAssertEqual(note, "A4", "Correct sample rate should identify A4")
+    }
+
+    // MARK: - Silence and Edge Cases
+
+    func testSilenceReturnsNoNote() {
+        let analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 44100)
+        let silence = [Float](repeating: 0, count: 4096)
+        let (bars, peakHz, note) = analyzer.process(buffer: silence)
+
+        XCTAssertEqual(note, "&mdash;", "Silence should show no note")
+        XCTAssertEqual(peakHz, 0, accuracy: 1)
+        XCTAssertTrue(bars.allSatisfy { $0 &gt;= 0 &amp;&amp; $0 &lt;= 1 })
+    }
+
+    func testShortBufferPadsToFFTSize() {
+        let analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 44100)
+        let shortSignal = sineWave(frequency: 440, sampleRate: 44100, count: 1024)
+        let (bars, peakHz, note) = analyzer.process(buffer: shortSignal)
+
+        XCTAssertEqual(peakHz, 440, accuracy: 20)
+        XCTAssertEqual(note, "A4")
+        XCTAssertEqual(bars.count, 48)
+    }
+
+    // MARK: - Note Mapping: Chromatic Scale
+
+    func testChromaticScale() {
+        let expectedNotes: [(Float, String)] = [
+            (261.63, "C4"),  (277.18, "C#4"), (293.66, "D4"),
+            (311.13, "D#4"), (329.63, "E4"),  (349.23, "F4"),
+            (369.99, "F#4"), (392.00, "G4"),  (415.30, "G#4"),
+            (440.00, "A4"),  (466.16, "A#4"), (493.88, "B4"),
+        ]
+
+        let analyzer = SpectrumAnalyzer(binCount: 48, sampleRate: 44100)
+
+        for (freq, expectedNote) in expectedNotes {
+            let signal = sineWave(frequency: freq, sampleRate: 44100, count: 4096)
+            let (_, _, note) = analyzer.process(buffer: signal)
+            XCTAssertEqual(note, expectedNote, "\(freq) Hz should map to \(expectedNote)")
+        }
+    }
+}</code></pre>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Running the tests</div>
+            <p>Press <strong>&#8984;U</strong> in Xcode to run the full test suite. All tests use
+            synthetic sine waves and run on the simulator &mdash; no device or microphone needed. The
+            sample rate mismatch tests are the most important: they prove that the bug from
+            <a href="/projects/spectrum-analyzer/tutorial/section08">Section&nbsp;8</a> can never silently
+            reappear.</p>
         </div>
 
         <nav class="section-nav">
