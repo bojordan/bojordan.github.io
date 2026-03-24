@@ -5,8 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ page.title }}</title>
     <link rel="stylesheet" href="/assets/css/styles.css">
+    <script>
+      (function() {
+        var saved = localStorage.getItem('theme');
+        var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
   </head>
   <body>
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme"></button>
     <div id="mastheadbackground"></div>
     <section id="posts">
     <div id="masthead">
@@ -28,5 +36,25 @@
           <footer class="footer">© Copyright 2026, Bo Jordan</footer>
         </div>
     </div>
+    <script>
+      (function() {
+        var btn = document.getElementById('theme-toggle');
+        function updateIcon() {
+          btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
+        }
+        updateIcon();
+        btn.addEventListener('click', function() {
+          var current = document.documentElement.getAttribute('data-theme');
+          var next = current === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+          updateIcon();
+          var hljsLink = document.getElementById('hljs-theme');
+          if (hljsLink) {
+            hljsLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-' + next + '.min.css';
+          }
+        });
+      })();
+    </script>
   </body>
 </html>

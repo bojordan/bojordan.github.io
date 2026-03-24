@@ -6,119 +6,119 @@ layout: default
   /* Tutorial-specific styles — layered on top of site theme */
   .tutorial-wrap { max-width: 100%; }
   .tutorial-wrap h1 { font-size: 1.75em; margin-bottom: 5px; }
-  .tutorial-wrap .lesson-num { color: #d19a66; }
+  .tutorial-wrap .lesson-num { color: var(--accent-orange); }
   .tutorial-wrap .intro {
-    font-size: 1.05em; background: #21252b; border-left: 4px solid #61afef;
+    font-size: 1.05em; background: var(--surface); border-left: 4px solid var(--accent-blue);
     padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0;
   }
   .tutorial-wrap .concept {
-    background: #21252b; border-radius: 10px; padding: 20px; margin: 20px 0;
-    border-left: 4px solid #61afef;
+    background: var(--surface); border-radius: 10px; padding: 20px; margin: 20px 0;
+    border-left: 4px solid var(--accent-blue);
   }
-  .tutorial-wrap .concept h3 { margin-top: 0; color: #61afef; }
+  .tutorial-wrap .concept h3 { margin-top: 0; color: var(--accent-blue); }
   .tutorial-wrap code {
-    background: #21252b; padding: 2px 6px; border-radius: 3px;
-    font-family: 'Consolas', monospace; color: #d19a66;
+    background: var(--code-inline-bg); padding: 2px 6px; border-radius: 3px;
+    font-family: 'Consolas', monospace; color: var(--code-inline-text);
   }
   .tutorial-wrap pre {
-    background: #21252b; padding: 18px; border-radius: 8px;
-    overflow-x: auto; margin: 15px 0; border: 1px solid #3b4043;
+    background: var(--code-block-bg); padding: 18px; border-radius: 8px;
+    overflow-x: auto; margin: 15px 0; border: 1px solid var(--code-border);
     font-size: 12px;
   }
   .tutorial-wrap pre code {
-    background: none; padding: 0; color: #adbac3; display: block; line-height: 1.6;
+    background: none; padding: 0; color: var(--code-block-text); display: block; line-height: 1.6;
   }
   .tutorial-wrap .game-box {
-    background: #1e2127; border: 2px solid #3b4043; border-radius: 10px;
+    background: var(--surface-deep); border: 2px solid var(--border); border-radius: 10px;
     margin: 20px 0; padding: 15px; text-align: center;
   }
-  .tutorial-wrap .game-box p { color: #9da7b3; font-size: 0.85em; margin: 8px 0 0; }
+  .tutorial-wrap .game-box p { color: var(--muted); font-size: 0.85em; margin: 8px 0 0; }
   .tutorial-wrap canvas { border-radius: 4px; display: block; margin: 0 auto; }
   .tutorial-wrap .challenge {
-    border: 2px dashed #d19a66; border-radius: 10px; padding: 20px; margin: 25px 0;
+    border: 2px dashed var(--accent-orange); border-radius: 10px; padding: 20px; margin: 25px 0;
   }
-  .tutorial-wrap .challenge h3 { color: #d19a66; margin-top: 0; }
+  .tutorial-wrap .challenge h3 { color: var(--accent-orange); margin-top: 0; }
   .tutorial-wrap .challenge ul { padding-left: 25px; }
   .tutorial-wrap .challenge li { margin: 5px 0; }
   .tutorial-wrap .tnav {
     display: flex; justify-content: space-between; margin: 25px 0;
   }
   .tutorial-wrap .tnav a {
-    color: #d19a66; text-decoration: none; padding: 10px 18px;
-    background: #21252b; border-radius: 6px;
+    color: var(--accent-orange); text-decoration: none; padding: 10px 18px;
+    background: var(--surface); border-radius: 6px;
   }
-  .tutorial-wrap .tnav a:hover { background: #2c313a; }
+  .tutorial-wrap .tnav a:hover { background: var(--surface-hover); }
   .tutorial-wrap .analogy {
-    background: #21252b; border-radius: 8px; padding: 15px; margin: 15px 0;
+    background: var(--surface); border-radius: 8px; padding: 15px; margin: 15px 0;
   }
   .tutorial-wrap .analogy::before { content: '💡 '; }
   .tutorial-wrap .tip {
-    background: #21252b; border-left: 4px solid #61afef; padding: 15px;
+    background: var(--surface); border-left: 4px solid var(--accent-blue); padding: 15px;
     margin: 15px 0; border-radius: 0 8px 8px 0;
   }
   .tutorial-wrap .warning {
-    background: #21252b; border-left: 4px solid #e06c75; padding: 15px;
+    background: var(--surface); border-left: 4px solid var(--accent-red); padding: 15px;
     margin: 15px 0; border-radius: 0 8px 8px 0;
   }
   .tutorial-wrap ul, .tutorial-wrap ol { padding-left: 25px; margin: 10px 0; }
   .tutorial-wrap li { margin: 5px 0; }
   .tutorial-wrap .key-display {
-    display: inline-block; background: #21252b; border: 2px solid #3b4043;
+    display: inline-block; background: var(--surface); border: 2px solid var(--border);
     border-radius: 6px; padding: 4px 12px; font-family: Consolas, monospace; margin: 2px;
   }
   .tutorial-wrap table { border-collapse: collapse; margin: 15px 0; }
-  .tutorial-wrap th, .tutorial-wrap td { border: 1px solid #3b4043; padding: 8px 14px; text-align: left; }
-  .tutorial-wrap th { background: #21252b; color: #61afef; }
+  .tutorial-wrap th, .tutorial-wrap td { border: 1px solid var(--border); padding: 8px 14px; text-align: left; }
+  .tutorial-wrap th { background: var(--surface); color: var(--accent-blue); }
   .tutorial-wrap .color-swatch {
     display: inline-block; width: 16px; height: 16px; border-radius: 3px;
     vertical-align: middle; margin-right: 6px;
   }
   .tutorial-wrap button {
-    background: #61afef; color: #282c34; border: none; padding: 10px 24px;
+    background: var(--btn-bg); color: var(--btn-text); border: none; padding: 10px 24px;
     border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: bold; margin: 5px;
   }
-  .tutorial-wrap button:hover { background: #519bd9; }
+  .tutorial-wrap button:hover { background: var(--btn-hover); }
 
   /* Lesson 12 specials */
   .tutorial-wrap .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
-  .tutorial-wrap .feature-card { background: #21252b; border-radius: 10px; padding: 15px; border-left: 4px solid #61afef; }
-  .tutorial-wrap .feature-card h3 { margin: 0 0 8px; color: #61afef; }
+  .tutorial-wrap .feature-card { background: var(--surface); border-radius: 10px; padding: 15px; border-left: 4px solid var(--accent-blue); }
+  .tutorial-wrap .feature-card h3 { margin: 0 0 8px; color: var(--accent-blue); }
   .tutorial-wrap .feature-card p { margin: 0; font-size: 0.9em; }
   .tutorial-wrap .play-button {
-    display: inline-block; background: #61afef; color: #282c34; padding: 18px 48px;
+    display: inline-block; background: var(--btn-bg); color: var(--btn-text); padding: 18px 48px;
     border-radius: 10px; text-decoration: none; font-size: 1.4em; font-weight: bold;
     margin: 20px 0; transition: transform 0.2s, background 0.2s;
   }
-  .tutorial-wrap .play-button:hover { background: #519bd9; transform: scale(1.05); }
+  .tutorial-wrap .play-button:hover { background: var(--btn-hover); transform: scale(1.05); }
   .tutorial-wrap .recap-table { width: 100%; }
-  .tutorial-wrap .recap-table td:first-child { font-weight: bold; color: #d19a66; }
+  .tutorial-wrap .recap-table td:first-child { font-weight: bold; color: var(--accent-orange); }
   .tutorial-wrap .congrats {
-    background: linear-gradient(135deg, #21252b, #2c313a); border-radius: 15px;
-    padding: 30px; text-align: center; margin: 30px 0; border: 2px solid #61afef;
+    background: linear-gradient(135deg, var(--surface), var(--surface-hover)); border-radius: 15px;
+    padding: 30px; text-align: center; margin: 30px 0; border: 2px solid var(--accent-blue);
   }
-  .tutorial-wrap .congrats h2 { color: #61afef; font-size: 1.6em; margin-bottom: 10px; }
+  .tutorial-wrap .congrats h2 { color: var(--accent-blue); font-size: 1.6em; margin-bottom: 10px; }
 
   /* Tutorial index page styles */
-  .tutorial-wrap .subtitle { color: #9da7b3; font-size: 1.15em; margin-bottom: 30px; }
+  .tutorial-wrap .subtitle { color: var(--muted); font-size: 1.15em; margin-bottom: 30px; }
   .tutorial-wrap .lessons { list-style: none; padding: 0; }
   .tutorial-wrap .lessons li { margin: 8px 0; }
   .tutorial-wrap .lessons a {
     display: flex; align-items: center; gap: 15px;
-    padding: 18px 22px; background: #21252b; border-radius: 10px;
-    color: #adbac3; text-decoration: none; transition: all 0.2s;
+    padding: 18px 22px; background: var(--surface); border-radius: 10px;
+    color: var(--text); text-decoration: none; transition: all 0.2s;
     border: 1px solid transparent;
   }
-  .tutorial-wrap .lessons a:hover { background: #2c313a; border-color: #61afef; transform: translateX(5px); }
+  .tutorial-wrap .lessons a:hover { background: var(--surface-hover); border-color: var(--accent-blue); transform: translateX(5px); }
   .tutorial-wrap .lesson-number {
-    background: #61afef; color: #282c34; font-weight: bold;
+    background: var(--btn-bg); color: var(--btn-text); font-weight: bold;
     width: 40px; height: 40px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 16px; flex-shrink: 0;
   }
-  .tutorial-wrap .lesson-title { font-weight: bold; font-size: 1.1em; color: #61afef; }
-  .tutorial-wrap .lesson-desc { font-size: 0.85em; color: #9da7b3; margin-top: 3px; }
+  .tutorial-wrap .lesson-title { font-weight: bold; font-size: 1.1em; color: var(--accent-blue); }
+  .tutorial-wrap .lesson-desc { font-size: 0.85em; color: var(--muted); margin-top: 3px; }
   .tutorial-wrap .section-label {
-    color: #d19a66; font-size: 0.9em; text-transform: uppercase;
+    color: var(--accent-orange); font-size: 0.9em; text-transform: uppercase;
     letter-spacing: 2px; margin: 35px 0 15px; font-weight: bold;
   }
 
