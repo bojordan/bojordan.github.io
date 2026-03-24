@@ -254,10 +254,10 @@ img.extrawide {
     }
 }
 
-/* 240-pixel layout for iPhone-sized screens */
+/* iPhone-sized screens */
 @media (max-width: 520px) {
     body {
-        font-size: 1em;
+        font-size: 1.2em;
     }
 
     #masthead {

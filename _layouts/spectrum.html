@@ -7,10 +7,97 @@ layout: default
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/swift.min.js"></script>
 
 <style>
-  /* Spectrum Analyzer Tutorial — layout styles
-     Layered on top of the site theme (dark, #282c34 bg) */
+  /* ---- Sidebar: floats in the left margin, outside the 800px container ---- */
+  /* Positioned 20px left of the container's left edge.
+     Container left edge = 50% - 400px, so sidebar left = 50% - 400px - 20px - 200px */
+  .spectrum-sidebar {
+    position: fixed;
+    left: calc(50% - 620px);
+    width: 200px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    max-height: calc(100vh - 40px);
+    padding: 1rem 0.85rem;
+    background: #1e2127;
+    border: 1px solid #3b4043;
+    border-radius: 8px;
+    z-index: 10;
+    scrollbar-width: thin;
+    scrollbar-color: #3b4043 transparent;
+  }
+  .spectrum-sidebar::-webkit-scrollbar { width: 6px; }
+  .spectrum-sidebar::-webkit-scrollbar-thumb { background: #3b4043; border-radius: 3px; }
+  .spectrum-sidebar::-webkit-scrollbar-track { background: transparent; }
 
+  .spectrum-sidebar-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 1.25rem;
+  }
+  .spectrum-sidebar-title a,
+  .spectrum-sidebar-title a:visited { color: #d19a66; text-decoration: none; }
+  .spectrum-sidebar-title a:hover { color: #e5b07a; }
+
+  .spectrum-sidebar nav a {
+    display: block;
+    padding: 0.2rem 0;
+    padding-left: 0.6rem;
+    font-size: 0.78rem;
+    color: #71717a;
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: color 0.15s;
+    line-height: 1.35;
+  }
+  .spectrum-sidebar nav a:hover { color: #e0e0e4; text-decoration: none; }
+  .spectrum-sidebar nav a.active { color: #d19a66; border-left-color: #d19a66; }
+  .spectrum-sidebar nav a.toc-h3 { padding-left: 1.2rem; font-size: 0.74rem; }
+
+  /* ---- Content area (no layout changes to section#posts) ---- */
   .spectrum-wrap { max-width: 100%; }
+
+  /* ---- Hamburger button (hidden on wide screens) ---- */
+  .spectrum-toggle {
+    display: none;
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 200;
+    background: #21252b;
+    border: 1px solid #3b4043;
+    border-radius: 6px;
+    color: #adbac3;
+    font-size: 1.4rem;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  /* ---- Mobile overlay ---- */
+  .spectrum-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 50;
+  }
+  .spectrum-overlay.show { display: block; }
+
+  /* ---- When viewport too narrow for margin sidebar, switch to hamburger ---- */
+  @media (max-width: 1240px) {
+    .spectrum-toggle { display: block; }
+    .spectrum-sidebar {
+      left: 0;
+      width: 280px;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      z-index: 200;
+    }
+    .spectrum-sidebar.open { transform: translateX(0); }
+  }
 
   /* ---- Typography ---- */
   .spectrum-wrap h1 { font-size: 1.75em; margin-bottom: 5px; color: #61afef; }
@@ -138,23 +225,26 @@ layout: default
     border-top: 1px solid #3b4043; color: #9da7b3; font-size: 0.85em;
   }
 
-  /* ---- Inline TOC ---- */
-  .spectrum-wrap .toc-inline {
-    background: #21252b; border-radius: 8px; padding: 15px 20px; margin: 20px 0;
-  }
-  .spectrum-wrap .toc-inline summary {
-    cursor: pointer; color: #61afef; font-weight: 600; font-size: 0.9em;
-  }
-  .spectrum-wrap .toc-inline ul { margin: 10px 0 0; padding-left: 20px; }
-  .spectrum-wrap .toc-inline a { color: #d19a66; font-size: 0.85em; }
-
-  /* ---- Responsive ---- */
-  @media (max-width: 680px) {
+  /* ---- Small screens ---- */
+  @media (max-width: 860px) {
     .spectrum-wrap .section-nav { flex-direction: column; gap: 8px; }
     .spectrum-wrap .section-nav a { text-align: center; }
     .spectrum-wrap pre { font-size: 0.8em; padding: 12px; }
   }
+
+  @media print {
+    .spectrum-sidebar, .spectrum-toggle, .spectrum-overlay { display: none !important; }
+  }
 </style>
+
+<button class="spectrum-toggle" aria-label="Toggle navigation">&#9776;</button>
+<div class="spectrum-overlay"></div>
+<aside class="spectrum-sidebar">
+  <div class="spectrum-sidebar-title">
+    <a href="/projects/spectrum-analyzer/tutorial/">Spectrum Analyzer Tutorial</a>
+  </div>
+  <nav></nav>
+</aside>
 
 <div class="spectrum-wrap">
 {{ content }}
@@ -168,30 +258,83 @@ layout: default
     });
   }
 
-  // Auto-generate inline TOC for sections with 4+ h2s
+  // Sidebar: TOC generation, scroll tracking, mobile toggle
   (function() {
     var wrap = document.querySelector('.spectrum-wrap');
-    if (!wrap) return;
-    var headings = wrap.querySelectorAll('h2[id]');
-    if (headings.length < 4) return;
-    var details = document.createElement('details');
-    details.className = 'toc-inline';
-    var summary = document.createElement('summary');
-    summary.textContent = 'On this page';
-    details.appendChild(summary);
-    var ul = document.createElement('ul');
-    headings.forEach(function(h) {
-      var li = document.createElement('li');
-      var a = document.createElement('a');
-      a.href = '#' + h.id;
-      a.textContent = h.textContent;
-      li.appendChild(a);
-      ul.appendChild(li);
-    });
-    details.appendChild(ul);
-    var h1 = wrap.querySelector('h1');
-    if (h1 && h1.nextSibling) {
-      h1.parentNode.insertBefore(details, h1.nextSibling);
+    var nav = document.querySelector('.spectrum-sidebar nav');
+    var sidebar = document.querySelector('.spectrum-sidebar');
+    if (!wrap || !nav || !sidebar) return;
+
+    // Align sidebar with content start
+    var rect = wrap.getBoundingClientRect();
+    sidebar.style.top = rect.top + window.scrollY + 'px';
+
+    var headings = wrap.querySelectorAll('h2[id], h3[id]');
+
+    if (headings.length >= 2) {
+      // Section page: build TOC from headings
+      headings.forEach(function(h) {
+        var a = document.createElement('a');
+        a.href = '#' + h.id;
+        var clone = h.cloneNode(true);
+        var tags = clone.querySelectorAll('.tag');
+        tags.forEach(function(t) { t.remove(); });
+        a.textContent = clone.textContent.trim();
+        if (h.tagName === 'H3') a.classList.add('toc-h3');
+        nav.appendChild(a);
+      });
+
+      // Scroll tracking
+      var links = nav.querySelectorAll('a');
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            var id = entry.target.id;
+            links.forEach(function(a) {
+              a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+            });
+          }
+        });
+      }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
+      headings.forEach(function(h) { observer.observe(h); });
+
+    } else {
+      // Index page: build section links from .section-list
+      var sectionLinks = wrap.querySelectorAll('.section-list a');
+      if (sectionLinks.length > 0) {
+        sectionLinks.forEach(function(link) {
+          var a = document.createElement('a');
+          a.href = link.getAttribute('href');
+          var numEl = link.querySelector('.section-num');
+          var titleEl = link.querySelector('.title');
+          a.textContent = (numEl ? numEl.textContent + '. ' : '') +
+                          (titleEl ? titleEl.textContent : link.textContent.trim());
+          nav.appendChild(a);
+        });
+      }
     }
+
+    // Mobile toggle
+    var toggle = document.querySelector('.spectrum-toggle');
+    var overlay = document.querySelector('.spectrum-overlay');
+
+    if (toggle) {
+      toggle.addEventListener('click', function() {
+        sidebar.classList.toggle('open');
+        if (overlay) overlay.classList.toggle('show');
+      });
+    }
+    if (overlay) {
+      overlay.addEventListener('click', function() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+      });
+    }
+    nav.addEventListener('click', function(e) {
+      if (e.target.tagName === 'A' && window.innerWidth <= 1240) {
+        sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('show');
+      }
+    });
   })();
 </script>
