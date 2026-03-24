@@ -5,4 +5,6 @@ title: Archives
 
 ## Archives
 
-At some point, this may have a link to some very-old posts.
+{% for post in site.posts %}
+- {{ post.date | date: "%B %e, %Y" }} — [{{ post.title }}]({{ post.url }})
+{% endfor %}
