@@ -5,11 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ page.title }}</title>
     <link rel="stylesheet" href="/assets/css/styles.css">
+    <link rel="stylesheet" href="https://static2.sharepointonline.com/files/fabric/office-ui-fabric-core/11.0.0/css/fabric.min.css">
     <script>
       (function() {
-        var saved = localStorage.getItem('theme');
-        var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', theme);
+        var pref = localStorage.getItem('theme');
+        var resolved = pref === 'light' || pref === 'dark' ? pref :
+          (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', resolved);
       })();
     </script>
   </head>
@@ -40,20 +42,38 @@
     <script>
       (function() {
         var btn = document.getElementById('theme-toggle');
-        function updateIcon() {
-          btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
+        var pref = localStorage.getItem('theme') || 'system';
+        var icons = {
+          light: '<i class="ms-Icon ms-Icon--ClearNight" aria-hidden="true"></i>',
+          dark: '<i class="ms-Icon ms-Icon--Sunny" aria-hidden="true"></i>',
+          system: '<i class="ms-Icon ms-Icon--CircleHalfFull" aria-hidden="true"></i>'
+        };
+        var cycle = { light: 'dark', dark: 'system', system: 'light' };
+
+        function systemTheme() {
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
-        updateIcon();
-        btn.addEventListener('click', function() {
-          var current = document.documentElement.getAttribute('data-theme');
-          var next = current === 'dark' ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', next);
-          localStorage.setItem('theme', next);
-          updateIcon();
+
+        function apply(p) {
+          pref = p;
+          var resolved = p === 'system' ? systemTheme() : p;
+          document.documentElement.setAttribute('data-theme', resolved);
+          btn.innerHTML = icons[p];
           var hljsLink = document.getElementById('hljs-theme');
           if (hljsLink) {
-            hljsLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-' + next + '.min.css';
+            hljsLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-' + resolved + '.min.css';
           }
+        }
+
+        apply(pref);
+        btn.addEventListener('click', function() {
+          var next = cycle[pref];
+          localStorage.setItem('theme', next);
+          apply(next);
+        });
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+          if (pref === 'system') apply('system');
         });
       })();
     </script>
