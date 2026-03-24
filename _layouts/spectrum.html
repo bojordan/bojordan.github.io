@@ -11,6 +11,7 @@ layout: default
   /* Positioned 20px left of the container's left edge.
      Container left edge = 50% - 400px, so sidebar left = 50% - 400px - 20px - 200px */
   .spectrum-sidebar {
+    display: none;
     position: fixed;
     left: calc(50% - 620px);
     width: 200px;
@@ -58,9 +59,9 @@ layout: default
   /* ---- Content area (no layout changes to section#posts) ---- */
   .spectrum-wrap { max-width: 100%; }
 
-  /* ---- Hamburger button (hidden on wide screens) ---- */
+  /* ---- Hamburger button (hidden until JS populates sidebar) ---- */
   .spectrum-toggle {
-    display: none;
+    display: none !important;
     position: fixed;
     top: 1rem;
     left: 1rem;
@@ -88,7 +89,7 @@ layout: default
 
   /* ---- When viewport too narrow for margin sidebar, switch to hamburger ---- */
   @media (max-width: 1240px) {
-    .spectrum-toggle { display: block; }
+    .spectrum-toggle { display: none !important; }
     .spectrum-sidebar {
       left: 0;
       width: 280px;
@@ -314,8 +315,12 @@ layout: default
       }
     }
 
-    // Mobile toggle
+    // Show sidebar + hamburger only if sidebar has content
     var toggle = document.querySelector('.spectrum-toggle');
+    if (nav.children.length > 0) {
+      sidebar.style.display = 'block';
+      if (toggle) toggle.classList.add('has-toc');
+    }
     var overlay = document.querySelector('.spectrum-overlay');
 
     if (toggle) {
