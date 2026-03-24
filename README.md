@@ -23,6 +23,11 @@ Start the local server:
 kill $(pgrep -f jekyll); /opt/homebrew/opt/ruby/bin/bundle exec jekyll serve --detach
 ```
 
+I prefer to run it in watch mode:
+```sh
+/opt/homebrew/opt/ruby/bin/bundle exec jekyll serve --detach
+```
+
 This kills any existing Jekyll process and starts a new one in the background. The site will be available at http://127.0.0.1:4000.
 
 To stop the server:
