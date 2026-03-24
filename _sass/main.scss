@@ -110,8 +110,6 @@ body {
 }
 
 #mastheadbackground {
-    height: 130px;
-    margin-bottom: -130px;
     background-color: var(--masthead-bg);
 }
 
@@ -137,6 +135,7 @@ h3, h4, h5, h6 {
 }
 
 #masthead h1 {
+    font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
     font-weight: normal;
     font-size: 2em;
     margin-top: 0;
@@ -156,7 +155,7 @@ h3, h4, h5, h6 {
 }
 
 #masthead p { margin: 0; padding: 0; }
-#masthead nav { display: block; margin: 0; padding: 1em 0; color: var(--masthead-nav); }
+#masthead nav { display: block; margin: 0; padding: 0.5em 0 1em; color: var(--masthead-nav); }
 
 .wrapper-footer {
     margin-top: 50px;
@@ -194,9 +193,9 @@ article.link header h2 a:visited {
 /* Block layout */
 
 #masthead {
-    width: 310px;
+    width: 800px;
+    margin: 0 auto;
     padding-top: 0;
-    margin-top: 0;
 }
 
 footer {
@@ -335,17 +334,8 @@ img.extrawide {
 
 /* 500-pixel layout for smaller screens */
 @media (max-width: 860px) {
-    section#posts { width: calc(100vw - 30px); }
+    section#posts, #masthead { width: calc(100vw - 30px); }
     img.extrawide { margin-left: -15px; max-width: 100vw; }
-
-    #mastheadbackground {
-        height: 190px;
-        margin-bottom: -190px;
-    }
-
-    #masthead {
-        height: 190px;
-    }
 }
 
 /* iPhone-sized screens */
@@ -355,7 +345,6 @@ img.extrawide {
     }
 
     #masthead {
-        width: 100%;
         font-size: 0.9em;
     }
 
@@ -363,15 +352,6 @@ img.extrawide {
 		padding-top: 0.25em;
 		font-size: 1.5em;
         margin-bottom: 0.5em;
-    }
-
-    #mastheadbackground {
-        height: 165px;
-        margin-bottom: -165px;
-    }
-
-    #masthead {
-        height: 165px;
     }
 
     figcaption { font-size: 1em; }
