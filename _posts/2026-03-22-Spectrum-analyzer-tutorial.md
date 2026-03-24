@@ -1,13 +1,13 @@
 ---
 layout: post
-title: "Building a Spectrum Analyzer for iPhone - A Tutorial"
+title: "Building an Audio Spectrum Analyzer for iPhone - A Tutorial"
 ---
 
 Fifteen years ago I built iPhone apps for a short while. Objective-C, UIKit, Xcode 3. Then, I got a new job and ended up never giving myself permission to devote any time to the Apple plaform.
 
 Long before that, I had brief hopes of getting into music software engineering. That story is for another day, but for at least two years I've wanted to write my own tuner app for guitars and violins. I thought this would be reasonable project and a good excuse to learn Swift. But, I've never made time.
 
-Now, we have powerful creation tools available to scratch itches. Time is less of a limiting factor. But, in keeping with a new theme, I also care deeping about these creation tools being powerful _educators_, and not just _producers_.
+Now, we have powerful creation tools available to scratch itches. Time is less of a limiting factor. But, in keeping with a new theme, I also care deeply about these creation tools being powerful _educators_, and not just _producers_.
 
 The result is a small Swift/SwiftUI app -- and, most importantly, tutorial -- that does real-time FFT analysis and displays 48 animated frequency bars with musical note detection. Four files, about 200 lines of code. It runs on an iPhone and it feels like magic when you sing into it and watch the bars dance. There will also be a Mac verison, because I need to tune guitars at my desk, too. And, in the near future, I hope my wife and kids will be able to use it on their amazing journeys with the violin.
 
