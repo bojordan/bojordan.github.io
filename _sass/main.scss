@@ -1,3 +1,11 @@
+@font-face {
+    font-family: 'Berkeley Mono';
+    src: url('/assets/fonts/BerkeleyMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* Theme variables */
 :root {
     --bg: #fff;
@@ -135,7 +143,7 @@ h3, h4, h5, h6 {
 }
 
 #masthead h1 {
-    font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+    font-family: 'Berkeley Mono', 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
     font-weight: normal;
     font-size: 2em;
     margin-top: 0;
@@ -288,7 +296,7 @@ sup { bottom: 0.5ex; }
 sub { top: .5ex; }
 
 pre {
-    font-size: 11px;
+    font-size: 13px;
     background-color: var(--pre-bg);
     padding: 1em;
     overflow: auto;

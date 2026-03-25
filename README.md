@@ -39,13 +39,18 @@ pkill -f jekyll
 ## Project structure
 
 ```
-_drafts/     # Unpublished post drafts
-_layouts/    # HTML layout templates
-_posts/      # Published blog posts
-_sass/       # Sass stylesheets
-assets/      # CSS, images, and other static files
-projects/    # Project pages
+_drafts/              # Unpublished post drafts
+_layouts/             # HTML layout templates
+_posts/               # Published blog posts
+_sass/                # Sass stylesheets
+assets/               # CSS, images, and other static files
+assets_unpublished/   # Font files and other assets tracked in git but excluded from the site build
+projects/             # Project pages
 ```
+
+## Fonts
+
+The site uses [Berkeley Mono](https://berkeleygraphics.com/typefaces/berkeley-mono/) by U.S. Graphics Company as its monospace typeface for the site title, code blocks, and other monospace elements. The Regular weight is self-hosted as a web font from `assets/fonts/`. The full font family (all 20 weights) is stored in `assets_unpublished/fonts/` — see [assets_unpublished/fonts/README.txt](assets_unpublished/fonts/README.txt) for license and build details.
 
 ## Deployment
 
