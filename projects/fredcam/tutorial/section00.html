@@ -1,0 +1,207 @@
+---
+layout: fredcam
+title: "Preface & Orientation — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section00
+---
+
+        <h1><span class="section-number">0.</span> Preface &amp; Orientation</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            What FredCam is, what you&rsquo;ll learn, and how this tutorial is organized.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="what-youll-build">What You&rsquo;ll Build</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <a href="https://github.com/bojordan/FredCam">FredCam</a> is an iOS app that streams the live camera feed from a Bambu Lab P2S 3D printer to your iPhone or iPad.
+            The printer streams over <strong>RTSPS</strong> &mdash; a TLS-encrypted variant of the Real-Time Streaming Protocol &mdash;
+            using a self-signed certificate that most media players refuse to touch.
+            FredCam works around that constraint to deliver a live feed you can monitor from across the house,
+            complete with Portrait/landscape layout adaptation and Picture-in-Picture so you can watch the bed level
+            while reading the next step of a recipe.
+        </p>
+
+        <div class="diagram">
+ Bambu Lab P2S         Local Network         FredCam (iOS)
+┌─────────────┐        ┌─────────┐         ┌───────────────────────────────┐
+│  camera     │───────▶│ RTSPS   │────────▶│  KSPlayer (FFmpeg backend)    │
+│  port 322   │        │  TLS    │         │  ↓                            │
+└─────────────┘        │ self-   │         │  <em>StreamState machine</em>          │
+  rtsps://bblp:        │ signed  │         │  ↓                            │
+  &lt;code&gt;@&lt;ip&gt;:322      └─────────┘         │  <em>SwiftUI view hierarchy</em>       │
+                                           │   portrait / landscape / PiP  │
+                                           └───────────────────────────────┘
+        </div>
+
+        <p>
+            The app is small &mdash; six Swift files, around 650 lines of code total &mdash; but it packs in
+            a surprising number of real-world iOS concepts: bridging UIKit into SwiftUI, state machines, reactive
+            data models, adaptive layout, Picture-in-Picture, and the full dependency decision-making process
+            including license implications. That&rsquo;s what this tutorial is really about.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="what-youll-learn">What You&rsquo;ll Learn</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            This tutorial teaches three subjects in parallel:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th><span class="tag tag-ios">iOS</span> iOS &amp; SwiftUI</th>
+                    <th><span class="tag tag-net">Network</span> Networking</th>
+                    <th><span class="tag tag-arch">Arch</span> Architecture</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>ObservableObject</strong> &mdash; Swift&rsquo;s reactive data model for driving UI from persistent state.</td>
+                    <td><strong>RTSP / RTSPS</strong> &mdash; The streaming protocol used by IP cameras, and why the &ldquo;S&rdquo; creates problems.</td>
+                    <td><strong>State machines</strong> &mdash; Modeling idle / connecting / live / error as a Swift enum with associated values.</td>
+                </tr>
+                <tr>
+                    <td><strong>UIViewRepresentable</strong> &mdash; The bridge that lets you embed any UIKit view inside a SwiftUI hierarchy.</td>
+                    <td><strong>TLS and self-signed certificates</strong> &mdash; Why the printer&rsquo;s certificate is rejected, and how FFmpeg bypasses the check.</td>
+                    <td><strong>Coordinator pattern</strong> &mdash; Routing delegate callbacks from UIKit back into SwiftUI state.</td>
+                </tr>
+                <tr>
+                    <td><strong>Picture-in-Picture</strong> &mdash; Keeping the video feed alive while you switch apps.</td>
+                    <td><strong>FFmpeg avOptions</strong> &mdash; Low-level transport and buffering knobs exposed through KSPlayer.</td>
+                    <td><strong>Stable view identity</strong> &mdash; Why moving a view in the SwiftUI tree tears down and recreates it, and how to avoid that.</td>
+                </tr>
+                <tr>
+                    <td><strong>verticalSizeClass</strong> &mdash; Detecting landscape vs. portrait for adaptive layout.</td>
+                    <td><strong>Local network permissions</strong> &mdash; iOS 14+ requirements for mDNS and local TCP connections.</td>
+                    <td><strong>Dependency decisions</strong> &mdash; How to evaluate libraries: capability, license, maintainability, and what you&rsquo;re signing up for.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ============================================================ -->
+        <h2 id="prerequisites">Prerequisites</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            You need:
+        </p>
+
+        <ul>
+            <li>
+                <strong>A Mac with Xcode 16+.</strong> The project targets iOS 26 (the version current at build time),
+                so you need a recent SDK. Xcode is free from the Mac App Store.
+            </li>
+            <li>
+                <strong>xcodegen installed.</strong> <code>brew install xcodegen</code>. This tool generates
+                <code>FredCam.xcodeproj</code> from the <code>project.yml</code> source-of-truth file.
+                Section 2 covers why this is worthwhile.
+            </li>
+            <li>
+                <strong>Programming experience in any language.</strong> The tutorial assumes you can read code,
+                understand classes, closures, and basic data structures.
+                No prior Swift or iOS knowledge is required &mdash; everything is introduced before it&rsquo;s used.
+            </li>
+            <li>
+                <strong>Optionally: a Bambu Lab P2S printer on your local network.</strong>
+                The app is useless without a printer to connect to, but you can follow along with the architecture
+                discussion without one. You can also test basic connectivity using <code>ffplay</code> on a Mac
+                if you have the printer IP and access code.
+            </li>
+        </ul>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                If you&rsquo;ve already read the <a href="/projects/spectrum-analyzer/tutorial/">spectrum analyzer tutorial</a>,
+                much of the SwiftUI groundwork (stacks, modifiers, <code>@State</code>, <code>@main</code>) is already familiar.
+                This tutorial focuses more on the inter-layer bridging and dependency decisions than on SwiftUI basics.
+                You can skim the iOS-tagged sections if you&rsquo;re comfortable with SwiftUI.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="how-this-tutorial-is-organized">How This Tutorial Is Organized</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Sections are tagged with one of three labels:
+        </p>
+
+        <ul>
+            <li><span class="tag tag-ios">iOS</span> <strong>Blue sections</strong> teach iOS and SwiftUI platform concepts.</li>
+            <li><span class="tag tag-net">Network</span> <strong>Green sections</strong> cover networking, protocols, and streaming.</li>
+            <li><span class="tag tag-arch">Arch</span> <strong>Purple sections</strong> discuss architecture decisions and design patterns.</li>
+        </ul>
+
+        <p>
+            Unlike a build-along tutorial where you type code incrementally, this tutorial <em>explains an existing app</em>.
+            Every section walks through real code from the FredCam source, explains each decision, and highlights
+            the tradeoffs. You&rsquo;re encouraged to have the source open in Xcode alongside these pages.
+        </p>
+
+        <h3 id="the-six-source-files">The Six Source Files</h3>
+
+        <p>
+            The entire app lives in six Swift files. Here&rsquo;s the map before we dive in:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Lines</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>FredCamApp.swift</code></td>
+                    <td>10</td>
+                    <td>App entry point. Creates the <code>WindowGroup</code> containing <code>ContentView</code>.</td>
+                </tr>
+                <tr>
+                    <td><code>PrinterSettings.swift</code></td>
+                    <td>25</td>
+                    <td>Persistent data model. Stores printer IP and access code in UserDefaults. Builds the RTSPS URL.</td>
+                </tr>
+                <tr>
+                    <td><code>CameraView.swift</code></td>
+                    <td>96</td>
+                    <td>The UIKit&ndash;SwiftUI bridge. Wraps KSPlayer inside a <code>UIViewRepresentable</code> and routes player events back into <code>StreamState</code>.</td>
+                </tr>
+                <tr>
+                    <td><code>SettingsView.swift</code></td>
+                    <td>77</td>
+                    <td>Sheet-based UI for entering the printer IP and access code.</td>
+                </tr>
+                <tr>
+                    <td><code>ContentView.swift</code></td>
+                    <td>310</td>
+                    <td>Main orchestrator. Defines <code>StreamState</code>, controls the view hierarchy, handles orientation, and renders all overlays.</td>
+                </tr>
+                <tr>
+                    <td><code>TLSProxy.swift</code></td>
+                    <td>125</td>
+                    <td>Unused reference implementation. A local TCP proxy that tunnels plain-text RTSP over TLS. Kept for documentation value.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>
+                The <code>TLSProxy.swift</code> file is an interesting artifact. It was written as an alternative approach
+                &mdash; a local proxy that would accept plain RTSP and forward it over TLS, which would have let even
+                VLC-based players work. It turned out to be unnecessary once KSPlayer&rsquo;s direct <code>tls_verify: 0</code>
+                option was discovered. The file was kept because <em>architectural dead ends are worth documenting</em>;
+                the next person to solve a similar problem might find the approach useful.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/">&larr; Table of Contents</a>
+            <a href="/projects/fredcam/tutorial/section01">Next &rarr;</a>
+        </nav>

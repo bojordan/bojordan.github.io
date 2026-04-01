@@ -1,0 +1,134 @@
+---
+layout: fredcam
+title: "Building a 3D Printer Camera Viewer for iPhone"
+permalink: /projects/fredcam/tutorial/
+---
+
+        <div class="hero">
+            <h1>Building a 3D Printer Camera Viewer<br>for iPhone</h1>
+            <p class="subtitle">
+                A walkthrough for experienced programmers learning iOS networking, UIKit&ndash;SwiftUI bridging,
+                and real-world dependency decisions from a small working app.
+            </p>
+            <div class="tech-stack">
+                <span>Swift</span>
+                <span>SwiftUI</span>
+                <span>UIViewRepresentable</span>
+                <span>KSPlayer / FFmpeg</span>
+                <span>RTSPS</span>
+                <span>XcodeGen</span>
+                <span>SPM</span>
+            </div>
+        </div>
+
+        <div class="arc-label">Getting Started</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/fredcam/tutorial/section00">
+                    <span class="section-num">0</span>
+                    <div class="section-info">
+                        <div class="title">Preface &amp; Orientation</div>
+                        <div class="desc">What FredCam is, what you&rsquo;ll learn, prerequisites</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/fredcam/tutorial/section01">
+                    <span class="section-num">1</span>
+                    <div class="section-info">
+                        <div class="title">The RTSPS Problem <span class="tag tag-net">Network</span></div>
+                        <div class="desc">RTSP, TLS, self-signed certificates, and why standard players fail</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 1 &mdash; Tooling and Dependencies</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/fredcam/tutorial/section02">
+                    <span class="section-num">2</span>
+                    <div class="section-info">
+                        <div class="title">XcodeGen and Swift Package Manager <span class="tag tag-ios">iOS</span></div>
+                        <div class="desc">Code-first project definition with project.yml, SPM dependency resolution</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/fredcam/tutorial/section03">
+                    <span class="section-num">3</span>
+                    <div class="section-info">
+                        <div class="title">KSPlayer &mdash; Dependencies and Licenses <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">MIT, FFmpeg&rsquo;s LGPL, what open-source licenses mean for your iOS app</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 2 &mdash; The App Architecture</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/fredcam/tutorial/section04">
+                    <span class="section-num">4</span>
+                    <div class="section-info">
+                        <div class="title">Data Model and Persistent Settings <span class="tag tag-ios">iOS</span></div>
+                        <div class="desc">ObservableObject, @Published, UserDefaults, computed URL</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/fredcam/tutorial/section05">
+                    <span class="section-num">5</span>
+                    <div class="section-info">
+                        <div class="title">App State &mdash; The StreamState Machine <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">Enum-driven state machines, @StateObject, @State, view lifecycle</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/fredcam/tutorial/section06">
+                    <span class="section-num">6</span>
+                    <div class="section-info">
+                        <div class="title">Bridging UIKit and SwiftUI <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">UIViewRepresentable, the Coordinator pattern, delegate callbacks</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/fredcam/tutorial/section07">
+                    <span class="section-num">7</span>
+                    <div class="section-info">
+                        <div class="title">Low-Latency Streaming Options <span class="tag tag-net">Network</span></div>
+                        <div class="desc">KSPlayer / FFmpeg avOptions, TCP transport, nobuffer, TLS bypass</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 3 &mdash; iOS Platform Integration</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/fredcam/tutorial/section08">
+                    <span class="section-num">8</span>
+                    <div class="section-info">
+                        <div class="title">Adaptive Layout, PiP, and System Permissions <span class="tag tag-ios">iOS</span></div>
+                        <div class="desc">verticalSizeClass, stable view identity, Picture-in-Picture, Info.plist</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/fredcam/tutorial/section09">
+                    <span class="section-num">9</span>
+                    <div class="section-info">
+                        <div class="title">Future Directions and License Considerations</div>
+                        <div class="desc">Distribution concerns, LGPL on the App Store, alternatives to KSPlayer</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="footer">
+            Built while exploring iOS networking with the help of Claude.<br>
+            Six Swift files. ~650 lines of code. One working RTSPS camera viewer.<br>
+            Source on GitHub: <a href="https://github.com/bojordan/FredCam">bojordan/FredCam</a>
+        </div>

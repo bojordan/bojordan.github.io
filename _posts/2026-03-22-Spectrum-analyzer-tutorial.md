@@ -19,17 +19,19 @@ It runs on two parallel tracks: iOS development and audio/DSP theory. Each theor
 
 The sections:
 
-0. [**Preface & Orientation**](/projects/spectrum-analyzer/tutorial/section00) - What you'll build, C# to Swift quick reference
-1. [**Your First iOS App**](/projects/spectrum-analyzer/tutorial/section01) - Xcode project, SwiftUI fundamentals
-2. [**What Is Sound?**](/projects/spectrum-analyzer/tutorial/section02) - Sampling, PCM, Nyquist, RMS, decibels
-3. [**Capturing Audio on iOS**](/projects/spectrum-analyzer/tutorial/section03) - AVAudioEngine, mic permissions, a working VU meter
-4. [**Accelerating the Math**](/projects/spectrum-analyzer/tutorial/section04) - Apple's Accelerate/vDSP framework
-5. [**The Fourier Transform**](/projects/spectrum-analyzer/tutorial/section05) - FFT intuition, frequency bins, window functions
-6. [**Building the Spectrum Analyzer**](/projects/spectrum-analyzer/tutorial/section06) - The SpectrumAnalyzer struct, log-spaced bars, note detection
-7. [**The Spectrum UI**](/projects/spectrum-analyzer/tutorial/section07) - SpectrumView component, dark theme, final ContentView
-8. [**Running on Your iPhone**](/projects/spectrum-analyzer/tutorial/section08) - Device setup, provisioning, debugging audio
-9. [**Beyond the Tutorial**](/projects/spectrum-analyzer/tutorial/section09) - TestFlight, App Store, better pitch detection
-10. [**Complete Source Code**](/projects/spectrum-analyzer/tutorial/section10) - All four final files with cross-references
+<ol start="0">
+<li><a href="/projects/spectrum-analyzer/tutorial/section00"><strong>Preface &amp; Orientation</strong></a> - What you'll build, C# to Swift quick reference</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section01"><strong>Your First iOS App</strong></a> - Xcode project, SwiftUI fundamentals</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section02"><strong>What Is Sound?</strong></a> - Sampling, PCM, Nyquist, RMS, decibels</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section03"><strong>Capturing Audio on iOS</strong></a> - AVAudioEngine, mic permissions, a working VU meter</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section04"><strong>Accelerating the Math</strong></a> - Apple's Accelerate/vDSP framework</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section05"><strong>The Fourier Transform</strong></a> - FFT intuition, frequency bins, window functions</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section06"><strong>Building the Spectrum Analyzer</strong></a> - The SpectrumAnalyzer struct, log-spaced bars, note detection</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section07"><strong>The Spectrum UI</strong></a> - SpectrumView component, dark theme, final ContentView</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section08"><strong>Running on Your iPhone</strong></a> - Device setup, provisioning, debugging audio</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section09"><strong>Beyond the Tutorial</strong></a> - TestFlight, App Store, better pitch detection</li>
+<li><a href="/projects/spectrum-analyzer/tutorial/section10"><strong>Complete Source Code</strong></a> - All four final files with cross-references</li>
+</ol>
 
 By the end of Section 3 you have a working VU meter. By the end of Section 7 you have the full spectrum analyzer. The last three sections cover getting it onto a real device and where to go next.
 

@@ -1,0 +1,205 @@
+---
+layout: fredcam
+title: "Low-Latency Streaming Options — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section07
+---
+
+        <h1><span class="section-number">7.</span> Low-Latency Streaming Options <span class="tag tag-net">Network</span></h1>
+
+        <p>
+            Getting the stream to open at all &mdash; overcoming the self-signed certificate &mdash;
+            was the primary challenge. But there&rsquo;s a secondary challenge: making the stream
+            feel <em>live</em>. A 3D printer camera is for monitoring. If the feed is 10 seconds
+            behind reality, you can&rsquo;t tell whether the print just failed or whether that was
+            yesterday. The streaming options in <code>CameraView</code> are a deliberate set of
+            tradeoffs tuned for minimum latency.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="koptions">KSOptions: The Configuration Object</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            All KSPlayer configuration flows through a <code>KSOptions</code> instance passed to
+            <code>KSPlayerLayer</code>:
+        </p>
+
+        <pre><code class="language-swift">let options = KSOptions()
+options.avOptions["rtsp_transport"] = "tcp"
+options.avOptions["tls_verify"] = "0"
+options.nobuffer = true
+options.codecLowDelay = true
+options.maxAnalyzeDuration = 1_000_000
+options.probesize = 500_000
+options.registerRemoteControll = false
+options.canStartPictureInPictureAutomaticallyFromInline = true</code></pre>
+
+        <p>
+            <code>avOptions</code> is a <code>[String: Any]</code> dictionary passed directly to FFmpeg&rsquo;s
+            <code>AVFormatContext</code> as RTSP protocol options. The other properties are KSPlayer-level
+            settings that control its own buffering and decode pipeline. Let&rsquo;s go through each one.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="rtsp-transport">rtsp_transport: TCP vs UDP</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            RTSP uses a separate channel to carry the actual video data (RTP packets). By default,
+            FFmpeg tries UDP for this channel, because UDP has lower overhead than TCP. But UDP is
+            a fire-and-forget protocol &mdash; packets can be lost, duplicated, or arrive out of order.
+        </p>
+
+        <p>
+            On a home network, UDP is generally fine. But there are common scenarios where it fails:
+        </p>
+
+        <ul>
+            <li><strong>Firewalls and NAT.</strong> Many home routers block inbound UDP on arbitrary ports.
+                The printer opens a UDP port for RTP, but the router may not allow the phone to reach it,
+                causing a silent timeout.</li>
+            <li><strong>Wi-Fi interference.</strong> UDP packet loss on a congested 2.4GHz band causes
+                dropped frames and decoder errors.</li>
+            <li><strong>VPNs.</strong> Many VPN clients route UDP differently from TCP, causing
+                RTSP-over-UDP to fail entirely.</li>
+        </ul>
+
+        <p>
+            Setting <code>rtsp_transport = "tcp"</code> tells FFmpeg to interleave the RTP video
+            data inside the existing RTSP TCP connection, rather than opening a separate UDP port.
+            This is slower in theory, but far more reliable in practice for LAN camera monitoring.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="tls-verify">tls_verify: Bypassing Certificate Validation</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            As established in Section 1, this is the whole reason KSPlayer was chosen:
+        </p>
+
+        <pre><code class="language-swift">options.avOptions["tls_verify"] = "0"</code></pre>
+
+        <p>
+            This passes FFmpeg&rsquo;s <code>tls_verify</code> option to the TLS layer, disabling
+            certificate chain verification. The TLS handshake still occurs &mdash; encryption keys
+            are negotiated, traffic is encrypted &mdash; but the server&rsquo;s certificate is not
+            checked against any trust store.
+        </p>
+
+        <div class="callout callout-warn">
+            <div class="callout-title">Security Note</div>
+            <p>
+                Disabling TLS certificate verification opens the connection to a
+                man-in-the-middle attack: someone on the same network could intercept the
+                connection and present their own certificate, and the app would accept it.
+                For a device on your home LAN, this risk is generally acceptable &mdash; you
+                control the network. If you were connecting over the internet, or on an
+                untrusted network, certificate pinning would be the right approach instead.
+                Certificate pinning means embedding the printer&rsquo;s specific public key in
+                the app and validating against that, rather than the CA chain.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="buffering">nobuffer and codecLowDelay: Minimizing Latency</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Video players buffer incoming data by default. Buffering smooths over network jitter &mdash;
+            if packets arrive unevenly, the player drains from the buffer at a steady rate, so playback
+            doesn&rsquo;t stutter. This is great for watching a movie over a slow connection. For
+            a printer camera, it introduces unnecessary delay.
+        </p>
+
+        <pre><code class="language-swift">options.nobuffer = true
+options.codecLowDelay = true</code></pre>
+
+        <ul>
+            <li>
+                <strong><code>nobuffer = true</code></strong> tells KSPlayer to minimize buffering and
+                present frames as soon as they arrive. This is analogous to FFmpeg&rsquo;s
+                <code>-fflags nobuffer</code> flag.
+            </li>
+            <li>
+                <strong><code>codecLowDelay = true</code></strong> instructs the H.264 decoder to
+                output frames as they&rsquo;re decoded rather than waiting for B-frame reordering.
+                H.264 can encode frames out of display order (B-frames reference future frames).
+                Waiting for the full group of pictures before displaying any of them adds latency.
+                Low-delay mode trades some decode efficiency for immediate output.
+            </li>
+        </ul>
+
+        <p>
+            The combined effect of these two settings typically reduces end-to-end latency from
+            2&ndash;5 seconds (default buffering) to under 1 second on a good Wi-Fi connection.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="probe">maxAnalyzeDuration and probesize: Faster Connection</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            When FFmpeg opens a stream, it spends time <em>probing</em>: reading a chunk of data to
+            figure out the stream&rsquo;s format, codec, bitrate, and timing information. This probing
+            is why there&rsquo;s a delay between &ldquo;connecting&rdquo; and &ldquo;first frame.&rdquo;
+        </p>
+
+        <pre><code class="language-swift">options.maxAnalyzeDuration = 1_000_000   // microseconds = 1 second
+options.probesize = 500_000              // bytes</code></pre>
+
+        <p>
+            The default values are much larger &mdash; FFmpeg may analyze up to 5&ndash;10 seconds
+            of data before deciding a stream is ready. Since the Bambu Lab stream is a known-format
+            H.264 feed, we can afford to cut this short:
+        </p>
+
+        <ul>
+            <li><code>maxAnalyzeDuration</code> limits how much time (in microseconds) FFmpeg
+                spends analyzing. 1,000,000 &micro;s = 1 second.</li>
+            <li><code>probesize</code> limits how many bytes it reads during analysis. 500,000
+                bytes = ~500 KB.</li>
+        </ul>
+
+        <p>
+            Together, these settings tell FFmpeg: &ldquo;make a decision within 1 second using
+            at most 500 KB of probe data.&rdquo; For a reliable H.264 RTSP source, this is
+            always sufficient. The result is noticeably faster stream startup.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="remote-control">registerRemoteControll: Silence the Media Controls</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-swift">options.registerRemoteControll = false  // note: KSPlayer misspells "control"</code></pre>
+
+        <p>
+            iOS has a &ldquo;Now Playing&rdquo; system that shows media controls on the Lock Screen
+            and in Control Center when any audio or video is playing. For a music or podcast app,
+            this is essential. For a printer camera feed, it&rsquo;s odd and distracting &mdash;
+            you don&rsquo;t want your printer to appear as a media source that you can &ldquo;pause&rdquo;
+            from the Lock Screen.
+        </p>
+
+        <p>
+            Setting <code>registerRemoteControll = false</code> tells KSPlayer not to register
+            with the Remote Command Center, keeping the printer stream invisible to the system
+            media controls.
+        </p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                The streaming options are a deliberate stack of latency and reliability tradeoffs.
+                TCP transport avoids UDP firewall issues. <code>tls_verify: 0</code> handles the
+                self-signed certificate. <code>nobuffer</code> and <code>codecLowDelay</code> minimize
+                end-to-end latency. Reduced probe settings speed up stream startup. The result is a
+                stream that typically goes live in under two seconds and stays within a second of
+                real-time.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section06">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section08">Next &rarr;</a>
+        </nav>

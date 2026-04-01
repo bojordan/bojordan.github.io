@@ -1,0 +1,234 @@
+---
+layout: fredcam
+title: "KSPlayer — Dependencies and Licenses — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section03
+---
+
+        <h1><span class="section-number">3.</span> KSPlayer &mdash; Dependencies and Licenses <span class="tag tag-arch">Arch</span></h1>
+
+        <p>
+            Every dependency you add to a project is a contract. You get capability; in return you accept
+            maintenance burden, API stability risk, and &mdash; often overlooked &mdash; license obligations.
+            KSPlayer is a single SPM entry in <code>project.yml</code>, but understanding what it brings
+            along and what you&rsquo;re agreeing to is worth a dedicated section.
+            The license situation here is more consequential than it first appears.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="ksplayer-overview">What KSPlayer Is</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <a href="https://github.com/kingslay/KSPlayer">KSPlayer</a> is an open-source Swift video player
+            for iOS, macOS, and tvOS. Its distinguishing characteristic is that it wraps
+            <strong>FFmpeg</strong> &mdash; the ubiquitous open-source media toolkit &mdash; as its decoding
+            and networking backend, while presenting a Swift-friendly API.
+        </p>
+
+        <p>
+            KSPlayer ships as an XCFramework containing pre-compiled FFmpeg for all Apple platforms and
+            architectures. This means:
+        </p>
+
+        <ul>
+            <li>You get FFmpeg&rsquo;s codec support (H.264, H.265/HEVC, AAC, and hundreds more) without
+                building FFmpeg yourself.</li>
+            <li>FFmpeg&rsquo;s <code>avOptions</code> are exposed directly through <code>KSOptions.avOptions</code>.</li>
+            <li>Hardware decode acceleration (VideoToolbox) is handled for you.</li>
+            <li>Metal-based rendering is included via the bundled <code>libshaderc_combined</code>.</li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <h2 id="license-stack">The License Stack</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            KSPlayer&rsquo;s Swift code is licensed under <strong>GPL v3</strong> &mdash; the GNU General
+            Public License, version 3. This is <em>not</em> a permissive license. It is a strong copyleft
+            license with significant implications for distribution. The components it bundles have their own
+            terms:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>License</th>
+                    <th>Implication</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>KSPlayer Swift code</td>
+                    <td><strong>GPL v3</strong></td>
+                    <td>Dominant license. Governs distribution of any app that includes it. See discussion below.</td>
+                </tr>
+                <tr>
+                    <td>FFmpeg core (libavcodec, libavformat, libavutil, libswscale)</td>
+                    <td>LGPL 2.1+</td>
+                    <td>Less restrictive than GPL, but the KSPlayer GPL wrapper is what matters here.</td>
+                </tr>
+                <tr>
+                    <td>libshaderc_combined</td>
+                    <td>Apache 2.0</td>
+                    <td>Permissive. Retain license and NOTICE file.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            The LGPL of FFmpeg doesn&rsquo;t soften the situation &mdash; because the Swift code that
+            calls into FFmpeg (KSPlayer itself) is GPL v3, any app that incorporates KSPlayer is subject
+            to GPL v3 terms. The most restrictive license in a combined work governs.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="gpl-explained">What GPL v3 Actually Requires</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            The GPL v3 is a <strong>copyleft</strong> license. Its core requirement is:
+        </p>
+
+        <blockquote style="border-left: 3px solid var(--border); padding-left: 1em; color: var(--muted); margin: 1em 0;">
+            If you distribute a program that incorporates GPL-licensed code, you must distribute that
+            program&rsquo;s complete source code under the GPL as well.
+        </blockquote>
+
+        <p>
+            This is the &ldquo;viral&rdquo; property of the GPL: the license propagates. FredCam&rsquo;s own
+            Swift code &mdash; the state machine, the layout, the settings view &mdash; all of it would need
+            to be released as GPL v3 source if you distribute an app that links against KSPlayer.
+        </p>
+
+        <p>
+            There is one important carve-out: <strong>GPL only applies to distribution</strong>.
+            If you never distribute the app &mdash; you build it in Xcode, install it on your own phone
+            via cable, and use it yourself &mdash; GPL imposes no obligations whatsoever. The license
+            does not restrict private use.
+        </p>
+
+        <div class="callout callout-warn">
+            <div class="callout-title">What This Means for FredCam</div>
+            <p>
+                Sideloading FredCam to your own device from Xcode: <strong>completely fine</strong>.
+                GPL v3 has no bearing on personal, non-distributed use.<br><br>
+                Distributing via TestFlight to friends: <strong>requires either open-sourcing FredCam
+                under GPL v3, or obtaining a commercial license from the KSPlayer maintainer</strong>.<br><br>
+                Submitting to the App Store as a closed-source app: <strong>same as above</strong> &mdash;
+                a GPL violation unless you comply or relicense.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="dual-licensing">Dual Licensing: The Commercial Option</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            KSPlayer uses a common commercial open-source model called <strong>dual licensing</strong>.
+            The maintainer offers two paths:
+        </p>
+
+        <ul>
+            <li>
+                <strong>GPL v3 (free):</strong> Use KSPlayer under the GPL, which requires your app to
+                also be GPL v3 &mdash; meaning you publish all your source code under GPL terms.
+            </li>
+            <li>
+                <strong>Commercial / LGPL license (paid):</strong> The maintainer offers alternative
+                licensing arrangements, including LGPL, for projects that need to ship proprietary code.
+                Contact <code>kingslay@icloud.com</code> to discuss terms.
+            </li>
+        </ul>
+
+        <p>
+            Dual licensing is a legitimate and well-established model &mdash; Qt, MySQL, and many other
+            major projects use it. The GPL edition builds a user community and provides free exposure;
+            the commercial license funds development. If you wanted to ship FredCam commercially
+            without open-sourcing it, a paid KSPlayer license would be the path.
+        </p>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Concept</div>
+            <p>
+                An alternative to paying for an LGPL license is to replace KSPlayer with your own
+                thin wrapper that links directly against FFmpeg&rsquo;s LGPL-licensed XCFrameworks
+                &mdash; without using any KSPlayer Swift code. FFmpeg itself is LGPL; it&rsquo;s
+                the KSPlayer layer on top that adds the GPL. Building a direct FFmpeg integration
+                is more work (no <code>KSPlayerLayer</code> convenience layer), but you&rsquo;d
+                be free of the GPL obligation. This is covered in more detail in Section 9.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="alternatives">Alternatives and License Comparison</h2>
+        <!-- ============================================================ -->
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Option</th>
+                    <th>License</th>
+                    <th>Tradeoffs</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>KSPlayer (current)</td>
+                    <td>GPL v3 (or paid commercial)</td>
+                    <td>Works today. Free for personal/open-source use. Distribution of closed-source app requires paid license.</td>
+                </tr>
+                <tr>
+                    <td>Direct FFmpeg integration</td>
+                    <td>LGPL 2.1</td>
+                    <td>No GPL exposure. Requires writing your own Swift wrapper around FFmpeg&rsquo;s C API. Significant but focused effort.</td>
+                </tr>
+                <tr>
+                    <td>VLCKit</td>
+                    <td>LGPL</td>
+                    <td>Can&rsquo;t bypass self-signed cert without source rebuild. Build from source is complex. LGPL is easier than GPL.</td>
+                </tr>
+                <tr>
+                    <td>Native RTSPS client</td>
+                    <td>None (Apple frameworks only)</td>
+                    <td>Zero license exposure. Requires implementing RTSP negotiation, RTP parsing, and H.264 demuxing manually. Weeks of work.</td>
+                </tr>
+                <tr>
+                    <td>Open-source FredCam (GPL)</td>
+                    <td>GPL v3 (your app too)</td>
+                    <td>Fully compliant with KSPlayer&rsquo;s license. No payment required. Means publishing FredCam&rsquo;s source publicly under GPL.</td>
+                </tr>
+                <tr>
+                    <td>AVPlayer over HLS</td>
+                    <td>None (Apple frameworks)</td>
+                    <td>Only viable if Bambu Lab adds HLS support. Currently RTSPS only.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout callout-warn">
+            <div class="callout-title">Not Legal Advice</div>
+            <p>
+                This section summarizes GPL v3 as commonly understood. It is not legal advice.
+                If you intend to distribute FredCam commercially or to a general audience, consult
+                a lawyer familiar with open-source licensing before doing so. The FSF&rsquo;s GPL FAQ
+                and the Software Freedom Law Center are useful starting points.
+            </p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                KSPlayer is licensed under <strong>GPL v3</strong>, not a permissive license.
+                GPL v3 requires that any distributed app incorporating KSPlayer also be released
+                under GPL v3. For personal, non-distributed use, there are no obligations.
+                For closed-source distribution, the options are: purchase a commercial license
+                from the KSPlayer maintainer, replace KSPlayer with a direct FFmpeg integration
+                (LGPL), or publish FredCam&rsquo;s own source under GPL v3.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section02">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section04">Next &rarr;</a>
+        </nav>

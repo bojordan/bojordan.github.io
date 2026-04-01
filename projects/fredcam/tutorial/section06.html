@@ -1,0 +1,320 @@
+---
+layout: fredcam
+title: "Bridging UIKit and SwiftUI — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section06
+---
+
+        <h1><span class="section-number">6.</span> Bridging UIKit and SwiftUI <span class="tag tag-arch">Arch</span></h1>
+
+        <p>
+            SwiftUI is Apple&rsquo;s preferred modern UI framework, but it can&rsquo;t do everything.
+            Large parts of the iOS ecosystem &mdash; including most media players, maps, cameras, and
+            rich text editors &mdash; are built on <strong>UIKit</strong>, the older, imperative framework.
+            KSPlayer exposes a <code>UIView</code> subclass, not a SwiftUI <code>View</code>. To use it,
+            we need a bridge.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="uiviewrepresentable">UIViewRepresentable</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>UIViewRepresentable</code> is a protocol that wraps a UIKit view (<code>UIView</code>)
+            in a SwiftUI-compatible shell. Any type conforming to this protocol can appear in a SwiftUI
+            view hierarchy as if it were a native SwiftUI view.
+        </p>
+
+        <p>
+            The protocol requires three methods (plus an optional fourth):
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Method</th>
+                    <th>When Called</th>
+                    <th>Responsibility</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>makeUIView(context:)</code></td>
+                    <td>Once, when SwiftUI first places this view in the hierarchy</td>
+                    <td>Create and configure the <code>UIView</code>. Return it.</td>
+                </tr>
+                <tr>
+                    <td><code>updateUIView(_:context:)</code></td>
+                    <td>Every time SwiftUI re-renders this view (which can be frequent)</td>
+                    <td>Sync any changes from SwiftUI state into the UIKit view.</td>
+                </tr>
+                <tr>
+                    <td><code>static dismantleUIView(_:coordinator:)</code></td>
+                    <td>When SwiftUI removes this view from the hierarchy</td>
+                    <td>Clean up resources (stop playback, release references).</td>
+                </tr>
+                <tr>
+                    <td><code>makeCoordinator()</code></td>
+                    <td>Before <code>makeUIView</code>, if implemented</td>
+                    <td>Create a <code>Coordinator</code> object that handles delegate callbacks.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            Here&rsquo;s <code>CameraView</code>&rsquo;s full implementation:
+        </p>
+
+        <pre><code class="language-swift">struct CameraView: UIViewRepresentable {
+    let url: URL
+    @Binding var streamState: StreamState
+    var onPipReady: ((@escaping () -> Void) -> Void)?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(streamState: $streamState)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let containerView = UIView()
+        containerView.backgroundColor = .black
+
+        let options = KSOptions()
+        options.avOptions["rtsp_transport"] = "tcp"
+        options.avOptions["tls_verify"] = "0"
+        options.nobuffer = true
+        options.codecLowDelay = true
+        options.maxAnalyzeDuration = 1_000_000
+        options.probesize = 500_000
+        options.registerRemoteControll = false
+        options.canStartPictureInPictureAutomaticallyFromInline = true
+
+        let layer = KSPlayerLayer(url: url, options: options, delegate: context.coordinator)
+        context.coordinator.playerLayer = layer
+        layer.play()
+
+        DispatchQueue.main.async {
+            self.onPipReady?({
+                layer.isPipActive.toggle()
+            })
+        }
+
+        return containerView
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let playerLayer = context.coordinator.playerLayer,
+           let playerView = playerLayer.player.view,
+           playerView.superview == nil {
+            playerView.frame = uiView.bounds
+            playerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            uiView.addSubview(playerView)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.playerLayer?.stop()
+        coordinator.playerLayer = nil
+    }
+}</code></pre>
+
+        <!-- ============================================================ -->
+        <h2 id="make-ui-view">makeUIView: Setup, Not Configuration</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>makeUIView</code> runs <em>once</em>. It creates a black <code>UIView</code> as a
+            container, configures a <code>KSPlayerLayer</code> with the stream URL and options,
+            and starts playback immediately. This is the right place for one-time setup: allocating
+            the player, setting delegates, and starting the stream.
+        </p>
+
+        <p>
+            Notice that the KSPlayer view (<code>playerLayer.player.view</code>) is <em>not</em>
+            added to the container in <code>makeUIView</code>. Instead, it&rsquo;s added in
+            <code>updateUIView</code>. This is because KSPlayer doesn&rsquo;t create its render view
+            synchronously &mdash; the player needs to negotiate with the stream first. By checking
+            in <code>updateUIView</code> (which runs after every SwiftUI update), the player view
+            gets added as soon as it exists.
+        </p>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Concept</div>
+            <p>
+                <code>makeUIView</code> is called by SwiftUI on the main thread. Heavy initialization
+                or blocking network calls here would freeze the UI. KSPlayer starts its RTSP
+                negotiation on a background thread internally; <code>makeUIView</code> just hands it
+                the URL and options and returns quickly. This is the right pattern: create the player,
+                give it work, return immediately.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="update-ui-view">updateUIView: Sync, Don't Rebuild</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>updateUIView</code> is called by SwiftUI <em>every time</em> any state the parent
+            view depends on changes. This can happen dozens of times per second in an animated app.
+            The implementation is defensive:
+        </p>
+
+        <pre><code class="language-swift">func updateUIView(_ uiView: UIView, context: Context) {
+    if let playerLayer = context.coordinator.playerLayer,
+       let playerView = playerLayer.player.view,
+       playerView.superview == nil {       // ← only add it once
+        playerView.frame = uiView.bounds
+        playerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        uiView.addSubview(playerView)
+    }
+}</code></pre>
+
+        <p>
+            The <code>playerView.superview == nil</code> check ensures the player view is only added
+            once, even though <code>updateUIView</code> might be called hundreds of times. Without
+            this guard, you&rsquo;d add the player view repeatedly, each time on top of the previous
+            one &mdash; a classic UIKit memory and layout bug.
+        </p>
+
+        <p>
+            <code>autoresizingMask = [.flexibleWidth, .flexibleHeight]</code> is UIKit&rsquo;s
+            auto-layout shorthand for &ldquo;fill the parent.&rdquo; When the container view resizes
+            (on rotation, for example), the player view stretches with it automatically.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="coordinator-pattern">The Coordinator Pattern</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            UIKit uses the <strong>delegate pattern</strong> for callbacks &mdash; a separate object
+            that implements a protocol to receive events. SwiftUI doesn&rsquo;t have delegates; it
+            uses bindings and closures. The <code>Coordinator</code> class is the bridge between them.
+        </p>
+
+        <pre><code class="language-swift">class Coordinator: NSObject, KSPlayerLayerDelegate {
+    var playerLayer: KSPlayerLayer?
+    var streamState: Binding&lt;StreamState&gt;
+
+    init(streamState: Binding&lt;StreamState&gt;) {
+        self.streamState = streamState
+    }
+
+    func player(layer: KSPlayerLayer, state: KSPlayerState) {
+        DispatchQueue.main.async {
+            switch state {
+            case .preparing, .readyToPlay, .buffering:
+                if case .connecting = self.streamState.wrappedValue { }
+                else { self.streamState.wrappedValue = .connecting }
+            case .bufferFinished:
+                withAnimation(.easeIn(duration: 0.5)) {
+                    self.streamState.wrappedValue = .live
+                }
+            case .error:
+                withAnimation {
+                    self.streamState.wrappedValue = .error("Could not connect to printer camera.")
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    // Required by protocol but not used:
+    func player(layer: KSPlayerLayer, currentTime: TimeInterval, totalTime: TimeInterval) {}
+
+    func player(layer: KSPlayerLayer, finish error: Error?) {
+        guard let error = error else { return }
+        DispatchQueue.main.async {
+            withAnimation {
+                self.streamState.wrappedValue = .error(error.localizedDescription)
+            }
+        }
+    }
+
+    // Required by protocol but not used:
+    func player(layer: KSPlayerLayer, bufferedCount: Int, consumeTime: TimeInterval) {}
+}</code></pre>
+
+        <p>
+            The <code>Coordinator</code> is a <code>class</code> (reference type) that inherits from
+            <code>NSObject</code>. The <code>NSObject</code> base class is required by
+            <code>KSPlayerLayerDelegate</code> because KSPlayer is written with Objective-C
+            interoperability in mind.
+        </p>
+
+        <p>
+            <code>Coordinator</code> holds a <code>Binding&lt;StreamState&gt;</code> &mdash; the same
+            binding that <code>ContentView</code> passed to <code>CameraView</code> via
+            <code>$streamState</code>. When KSPlayer fires a delegate callback, the coordinator
+            writes to <code>streamState.wrappedValue</code>, which updates <code>ContentView</code>&rsquo;s
+            <code>@State</code> property, which triggers a SwiftUI re-render.
+        </p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>
+                <strong>Always update SwiftUI state on the main thread.</strong> KSPlayer fires delegate
+                callbacks on a background thread. Writing to a <code>@State</code> or <code>@Binding</code>
+                property from a background thread causes a runtime warning (and undefined behavior in
+                older iOS versions). Every callback in <code>Coordinator</code> wraps its state
+                update in <code>DispatchQueue.main.async { ... }</code> to hop back to the main thread.
+                This is standard UIKit-to-SwiftUI bridging practice.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="pip-callback">The PiP Callback</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Picture-in-Picture is triggered by calling <code>layer.isPipActive.toggle()</code> on the
+            <code>KSPlayerLayer</code>. But the player layer is created inside <code>makeUIView</code>,
+            which runs deep in the UIKit layer &mdash; not directly accessible from
+            <code>ContentView</code>&rsquo;s button actions.
+        </p>
+
+        <p>
+            The solution is the <code>onPipReady</code> closure:
+        </p>
+
+        <pre><code class="language-swift">// CameraView property
+var onPipReady: ((@escaping () -> Void) -> Void)?
+
+// In makeUIView — once the layer is ready, call onPipReady with an action
+DispatchQueue.main.async {
+    self.onPipReady?({
+        layer.isPipActive.toggle()
+    })
+}
+
+// ContentView stores the action
+@State private var pipAction: (() -> Void)?
+CameraView(url: url, streamState: $streamState) { action in
+    pipAction = action
+}
+
+// ContentView's PiP button uses it
+Button { pipAction?() } label: { ... }</code></pre>
+
+        <p>
+            <code>CameraView</code> calls <code>onPipReady</code> with a closure that knows how to
+            toggle PiP. <code>ContentView</code> stores that closure as <code>pipAction</code>.
+            The PiP button calls <code>pipAction?()</code>. The indirection lets the UIKit layer
+            hand a capability up to the SwiftUI layer without breaking the ownership hierarchy.
+        </p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                <code>CameraView</code> conforms to <code>UIViewRepresentable</code>, wrapping KSPlayer&rsquo;s
+                <code>KSPlayerLayer</code>. <code>makeUIView</code> creates and starts the player.
+                <code>updateUIView</code> adds the player&rsquo;s render view once it&rsquo;s ready.
+                <code>dismantleUIView</code> stops playback on teardown. The <code>Coordinator</code>
+                implements <code>KSPlayerLayerDelegate</code> and translates player state changes into
+                <code>StreamState</code> updates, always dispatching to the main thread.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section05">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section07">Next &rarr;</a>
+        </nav>

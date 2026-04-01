@@ -1,0 +1,239 @@
+---
+layout: fredcam
+title: "Data Model and Persistent Settings — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section04
+---
+
+        <h1><span class="section-number">4.</span> Data Model and Persistent Settings <span class="tag tag-ios">iOS</span></h1>
+
+        <p>
+            Before the app can stream anything, it needs to know where the printer is.
+            <code>PrinterSettings.swift</code> is the data model: 25 lines of Swift that store the
+            printer&rsquo;s IP address and access code, persist them across app launches, and derive
+            the RTSPS URL from them. Small file, but it demonstrates three important iOS patterns in one place.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-code">PrinterSettings.swift</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-swift">import Foundation
+import SwiftUI
+
+class PrinterSettings: ObservableObject {
+    @Published var printerIP: String {
+        didSet { UserDefaults.standard.set(printerIP, forKey: "printerIP") }
+    }
+    @Published var accessCode: String {
+        didSet { UserDefaults.standard.set(accessCode, forKey: "accessCode") }
+    }
+
+    var isConfigured: Bool {
+        !printerIP.isEmpty && !accessCode.isEmpty
+    }
+
+    var streamURL: URL? {
+        guard isConfigured else { return nil }
+        return URL(string: "rtsps://bblp:\(accessCode)@\(printerIP):322/streaming/live/1")
+    }
+
+    init() {
+        self.printerIP = UserDefaults.standard.string(forKey: "printerIP") ?? ""
+        self.accessCode = UserDefaults.standard.string(forKey: "accessCode") ?? ""
+    }
+}</code></pre>
+
+        <!-- ============================================================ -->
+        <h2 id="observable-object">ObservableObject and @Published</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>ObservableObject</code> is a protocol that enables a class to participate in SwiftUI&rsquo;s
+            reactive update system. When a property marked <code>@Published</code> changes, SwiftUI automatically
+            re-renders any views that are observing this object.
+        </p>
+
+        <p>
+            If you&rsquo;ve written C# with WPF, this maps closely to:
+        </p>
+
+        <table>
+            <thead>
+                <tr><th>Swift / SwiftUI</th><th>C# / WPF</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>class PrinterSettings: ObservableObject</code></td>
+                    <td><code>class PrinterSettings : INotifyPropertyChanged</code></td>
+                </tr>
+                <tr>
+                    <td><code>@Published var printerIP: String</code></td>
+                    <td><code>[ObservableProperty] private string _printerIP;</code> (CommunityToolkit)</td>
+                </tr>
+                <tr>
+                    <td>SwiftUI auto-subscribes when a view reads the property</td>
+                    <td>Binding in XAML subscribes to <code>PropertyChanged</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            The <code>@Published</code> property wrapper synthesizes a Combine <code>Publisher</code>
+            behind the scenes. When the value changes, it sends a notification to SwiftUI&rsquo;s
+            observation system, which schedules a re-render of any view that read the property.
+        </p>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>
+                <code>ObservableObject</code> requires a <code>class</code> (reference type), not a
+                <code>struct</code>. This is because multiple views need to share a <em>single</em>
+                instance and observe changes to it. If <code>PrinterSettings</code> were a struct,
+                each copy in each view would be independent, and changes in one view wouldn&rsquo;t
+                propagate to others. The reference semantics of a class guarantee that
+                <code>@StateObject</code> in <code>ContentView</code> and
+                <code>@ObservedObject</code> in <code>SettingsView</code> point to the same object.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="userdefaults">UserDefaults Persistence with didSet</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            iOS apps are regularly terminated and relaunched. The printer IP and access code need to
+            survive across sessions. <strong>UserDefaults</strong> is the right tool for small,
+            user-level preferences &mdash; it&rsquo;s essentially a persistent dictionary backed by
+            a property list file in the app&rsquo;s container.
+        </p>
+
+        <p>
+            The persistence is wired through Swift&rsquo;s <code>didSet</code> property observer:
+        </p>
+
+        <pre><code class="language-swift">@Published var printerIP: String {
+    didSet { UserDefaults.standard.set(printerIP, forKey: "printerIP") }
+}</code></pre>
+
+        <p>
+            <code>didSet</code> is a block that runs immediately after the property&rsquo;s value
+            changes. Every time <code>printerIP</code> is assigned a new value, the new value is
+            written to UserDefaults. The <code>init()</code> reads it back on startup:
+        </p>
+
+        <pre><code class="language-swift">init() {
+    self.printerIP = UserDefaults.standard.string(forKey: "printerIP") ?? ""
+    self.accessCode = UserDefaults.standard.string(forKey: "accessCode") ?? ""
+}</code></pre>
+
+        <p>
+            The <code>?? ""</code> is the nil-coalescing operator &mdash; if no value has ever been
+            saved for that key, <code>string(forKey:)</code> returns <code>nil</code>, and we
+            substitute an empty string. This is equivalent to C#&rsquo;s <code>??</code> operator:
+            <code>Properties.Settings.Default.PrinterIP ?? string.Empty</code>.
+        </p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                For a production app, storing a security credential like an access code in
+                UserDefaults is not best practice &mdash; the Keychain is the right place for
+                secrets. UserDefaults is unencrypted and accessible to anyone with a full device
+                backup. For a personal-use app on your own phone, the tradeoff is acceptable.
+                A future improvement would be to store <code>accessCode</code> using
+                <code>SecItemAdd</code>/<code>SecItemCopyMatching</code> in the Keychain, or
+                use the <a href="https://developer.apple.com/documentation/security/keychain_services">KeychainAccess</a>
+                library as a friendlier wrapper.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="computed-properties">Computed Properties: isConfigured and streamURL</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Rather than storing a <code>Bool</code> for &ldquo;is the user configured?&rdquo; or
+            recomputing the stream URL in multiple places, these are <strong>computed properties</strong>
+            &mdash; properties with no storage that compute their value on demand:
+        </p>
+
+        <pre><code class="language-swift">var isConfigured: Bool {
+    !printerIP.isEmpty && !accessCode.isEmpty
+}
+
+var streamURL: URL? {
+    guard isConfigured else { return nil }
+    return URL(string: "rtsps://bblp:\(accessCode)@\(printerIP):322/streaming/live/1")
+}</code></pre>
+
+        <p>
+            <code>streamURL</code> returns an <code>Optional&lt;URL&gt;</code> (written as <code>URL?</code>).
+            It returns <code>nil</code> when not configured, and a <code>URL</code> when it is.
+            Swift&rsquo;s string interpolation (<code>\(accessCode)</code>) is equivalent to C#&rsquo;s
+            interpolated strings (<code>$"{accessCode}"</code>).
+        </p>
+
+        <p>
+            Notice that <code>streamURL</code> is not <code>@Published</code>. It doesn&rsquo;t need
+            to be &mdash; because it&rsquo;s derived from <code>printerIP</code> and
+            <code>accessCode</code>, SwiftUI knows to recompute it whenever either of those
+            <code>@Published</code> properties changes. A computed property based on observed state
+            is automatically reactive.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="stateobject-vs-observedobject">@StateObject vs @ObservedObject</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>PrinterSettings</code> is created once and shared across two views:
+        </p>
+
+        <pre><code class="language-swift">// ContentView.swift
+@StateObject private var settings = PrinterSettings()
+
+// SettingsView.swift — receives the same instance as a parameter
+@ObservedObject var settings: PrinterSettings</code></pre>
+
+        <p>
+            The distinction matters:
+        </p>
+
+        <ul>
+            <li>
+                <strong><code>@StateObject</code></strong> is the <em>owner</em>. SwiftUI creates the
+                object once when the view first appears and holds a strong reference to it. If
+                <code>ContentView</code> is rebuilt (which SwiftUI does constantly), the
+                <code>PrinterSettings</code> instance persists &mdash; it&rsquo;s not recreated.
+            </li>
+            <li>
+                <strong><code>@ObservedObject</code></strong> is the <em>observer</em>. The object was
+                created elsewhere and passed in. <code>SettingsView</code> observes the same instance
+                that <code>ContentView</code> owns. Changes in <code>SettingsView</code> propagate
+                back to <code>ContentView</code> automatically because they share the same object.
+            </li>
+        </ul>
+
+        <p>
+            A common mistake is to use <code>@ObservedObject</code> in the root view that creates
+            the object. If you write <code>@ObservedObject private var settings = PrinterSettings()</code>
+            in <code>ContentView</code>, SwiftUI may create a new <code>PrinterSettings</code> instance
+            every time the view rebuilds, losing the reference and the data. Use <code>@StateObject</code>
+            for the view that owns the lifetime of the object.
+        </p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                <code>PrinterSettings</code> is an <code>ObservableObject</code> with two
+                <code>@Published</code> properties that auto-save to UserDefaults via <code>didSet</code>.
+                The RTSPS URL is a computed property derived from those two values, so it&rsquo;s
+                always consistent. <code>ContentView</code> owns the instance with <code>@StateObject</code>;
+                <code>SettingsView</code> observes it with <code>@ObservedObject</code>.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section03">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section05">Next &rarr;</a>
+        </nav>

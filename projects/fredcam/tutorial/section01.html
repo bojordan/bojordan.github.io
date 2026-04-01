@@ -1,0 +1,202 @@
+---
+layout: fredcam
+title: "The RTSPS Problem — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section01
+---
+
+        <h1><span class="section-number">1.</span> The RTSPS Problem <span class="tag tag-net">Network</span></h1>
+
+        <p>
+            Before writing a single line of Swift, it&rsquo;s worth understanding why this app needed to exist at all.
+            The Bambu Lab P2S has a perfectly usable camera. The stream is live and accessible on the local network.
+            So why can&rsquo;t you just paste the URL into VLC and call it a day?
+            The answer involves three overlapping issues: a protocol, a certificate, and a library limitation.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="rtsp-basics">RTSP: The Streaming Protocol</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <strong>RTSP</strong> (Real-Time Streaming Protocol) is a control protocol for multimedia streams,
+            defined in <a href="https://tools.ietf.org/html/rfc2326">RFC 2326</a> in 1998.
+            Think of it like HTTP, but for video: a client sends DESCRIBE, SETUP, and PLAY commands;
+            the server responds and then begins pushing audio/video data, typically over a separate
+            RTP (Real-time Transport Protocol) channel.
+        </p>
+
+        <div class="diagram">
+  Client                      Server (printer, port 554/322)
+  ──────                      ──────────────────────────────
+  DESCRIBE rtsp://...  ──────▶  ← what streams are available?
+                       ◀──────  SDP: one H.264 video track
+  SETUP               ──────▶  ← configure transport
+                       ◀──────  OK, use RTP/TCP
+  PLAY                ──────▶  ← start sending
+                       ◀──────  200 OK
+                       ◀──────  [RTP packets, continuous stream]
+        </div>
+
+        <p>
+            The Bambu Lab P2S uses port 322 instead of the standard 554, and it uses <strong>RTSPS</strong>
+            &mdash; RTSP over TLS &mdash; rather than plain RTSP.
+            The full URL the app connects to looks like this:
+        </p>
+
+        <pre><code class="language-bash">rtsps://bblp:&lt;ACCESS_CODE&gt;@&lt;PRINTER_IP&gt;:322/streaming/live/1</code></pre>
+
+        <p>
+            The <code>bblp</code> is a fixed username, the access code is the PIN visible on the printer&rsquo;s
+            touchscreen, and <code>/streaming/live/1</code> is the stream path.
+            The credentials are embedded directly in the URL, which is standard RTSP authentication practice.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-tls-problem">The TLS Problem: Self-Signed Certificates</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            The &ldquo;S&rdquo; in RTSPS means the connection is wrapped in TLS, the same encryption layer
+            used by HTTPS. TLS works by presenting a certificate that proves the server&rsquo;s identity.
+            Normally, that certificate is signed by a trusted Certificate Authority (CA) &mdash; organizations
+            like Let&rsquo;s Encrypt, DigiCert, or Apple&rsquo;s own roots.
+        </p>
+
+        <p>
+            The Bambu Lab printer uses a <strong>self-signed certificate</strong>: a certificate it generated
+            itself, not vouched for by any CA. From a cryptographic standpoint, the connection is still
+            encrypted &mdash; the data on the wire is unreadable to observers. But the certificate provides
+            no proof of identity. For a printer on your home network, that&rsquo;s fine &mdash; you know
+            which device you&rsquo;re talking to. For TLS clients that follow the spec strictly, it&rsquo;s
+            a hard error.
+        </p>
+
+        <div class="callout callout-net">
+            <div class="callout-title">Network Concept</div>
+            <p>
+                A TLS certificate contains the server&rsquo;s public key, its domain name (or IP), and a
+                digital signature from a CA. When you connect to <code>https://example.com</code>, your
+                browser checks: (1) Is this certificate signed by a CA I trust? (2) Does the name on the
+                certificate match the URL? If either check fails, you see a browser warning.
+                A self-signed certificate fails check (1) every time, because no CA has vouched for it.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="why-avplayer-fails">Why AVPlayer Fails</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Apple&rsquo;s built-in <code>AVPlayer</code> (part of AVFoundation) can play RTSP streams &mdash;
+            sort of. It supports <code>rtsp://</code> URLs on some iOS versions, but RTSPS with a self-signed
+            certificate is a non-starter. AVPlayer uses Apple&rsquo;s TLS stack, which correctly rejects
+            certificates that can&rsquo;t be verified. There is no public API to disable certificate validation
+            for AVPlayer streams. You can set <code>NSAllowsArbitraryLoads</code> in App Transport Security,
+            but that applies to HTTP(S), not to RTSP.
+        </p>
+
+        <p>
+            Even setting aside the TLS issue, AVPlayer&rsquo;s RTSP support is inconsistently documented,
+            behaves differently across iOS versions, and has been effectively abandoned in favor of HTTP Live
+            Streaming (HLS) and MPEG-DASH for network video. Using it for a live RTSP camera feed is fighting
+            the framework.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="why-vlckit-fails">Why VLCKit Fails</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            VLC is the Swiss Army knife of media players, and its iOS library &mdash; <strong>VLCKit</strong>
+            &mdash; can play almost anything. RTSP, RTSPS, obscure codecs, unusual containers. It seemed like
+            the obvious choice.
+        </p>
+
+        <p>
+            The blocker: VLCKit 3.x uses <strong>GnuTLS</strong> as its TLS implementation.
+            GnuTLS, when configured as VLCKit ships it, does not expose a way to disable certificate verification
+            for a specific connection. The <code>tls_verify</code> option that FFmpeg exposes (and that KSPlayer
+            passes through) simply doesn&rsquo;t exist in the GnuTLS path VLCKit uses.
+        </p>
+
+        <p>
+            Attempts to connect the printer stream through VLCKit result in a TLS handshake failure.
+            The only workaround would be to build VLCKit from source with a custom configuration &mdash;
+            a significant undertaking that would need to be maintained across every VLCKit update.
+        </p>
+
+        <div class="callout callout-warn">
+            <div class="callout-title">The Dead-End Approach</div>
+            <p>
+                <code>TLSProxy.swift</code> in the project is the archaeological record of a third approach:
+                a local TCP proxy that listens on a plain-text port, accepts RTSP from VLC, and forwards
+                the bytes over a TLS connection (with verification disabled at the proxy level) to the printer.
+                This would have worked &mdash; the proxy can use Apple&rsquo;s Network framework with
+                <code>NWProtocolTLS.Options</code> and a custom verification block that always succeeds.
+                But it required keeping a background process alive, managing two network connections per stream,
+                and added failure modes. When KSPlayer&rsquo;s <code>tls_verify</code> option solved the
+                problem in one line, the proxy approach was shelved.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="the-solution-ksplayer">The Solution: KSPlayer and FFmpeg</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <strong>KSPlayer</strong> is an open-source Swift video player that uses <strong>FFmpeg</strong>
+            as its media decoding and networking backend. FFmpeg&rsquo;s RTSP implementation exposes a
+            key option:
+        </p>
+
+        <pre><code class="language-bash">ffplay -rtsp_transport tcp -tls_verify 0 \
+    'rtsps://bblp:&lt;code&gt;@&lt;ip&gt;:322/streaming/live/1'</code></pre>
+
+        <p>
+            The <code>-tls_verify 0</code> flag tells FFmpeg to skip certificate validation entirely.
+            The connection is still encrypted &mdash; the TLS handshake still happens, keys are still
+            exchanged, data is still protected in transit. We&rsquo;re just not verifying that the
+            certificate was issued by a trusted authority. For a device on your own local network
+            that you physically placed there, this is an acceptable tradeoff.
+        </p>
+
+        <p>
+            KSPlayer exposes FFmpeg&rsquo;s <code>avOptions</code> dictionary directly through its
+            <code>KSOptions</code> configuration object, so this works without any custom FFmpeg build:
+        </p>
+
+        <pre><code class="language-swift">let options = KSOptions()
+options.avOptions["tls_verify"] = "0"   // Skip certificate validation
+options.avOptions["rtsp_transport"] = "tcp"  // Reliable TCP over UDP</code></pre>
+
+        <p>
+            That&rsquo;s what the entire app is built on. The rest &mdash; the state machine, the adaptive
+            layout, the Picture-in-Picture support &mdash; is iOS scaffolding around this core capability.
+        </p>
+
+        <div class="callout callout-net">
+            <div class="callout-title">Network Concept</div>
+            <p>
+                RTSP can transport RTP data over either <strong>UDP</strong> or <strong>TCP</strong>.
+                UDP is lower-latency in ideal conditions, but it&rsquo;s connectionless &mdash; packets
+                can be dropped, reordered, or blocked by firewalls and NAT. TCP guarantees delivery and
+                ordering, which matters more than raw latency for a home network camera.
+                The <code>rtsp_transport = "tcp"</code> option forces FFmpeg to interleave RTP data
+                inside the existing RTSP TCP connection rather than opening a separate UDP port.
+            </p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                The Bambu Lab printer streams RTSPS on port 322 with a self-signed certificate.
+                AVPlayer has no certificate bypass API. VLCKit&rsquo;s GnuTLS backend doesn&rsquo;t
+                expose the needed option. KSPlayer&rsquo;s FFmpeg backend does, via
+                <code>avOptions["tls_verify"] = "0"</code>. That&rsquo;s why KSPlayer is the dependency.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section00">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section02">Next &rarr;</a>
+        </nav>

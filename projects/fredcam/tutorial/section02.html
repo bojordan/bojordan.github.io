@@ -1,0 +1,247 @@
+---
+layout: fredcam
+title: "XcodeGen and Swift Package Manager — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section02
+---
+
+        <h1><span class="section-number">2.</span> XcodeGen and Swift Package Manager <span class="tag tag-ios">iOS</span></h1>
+
+        <p>
+            iOS projects have a reputation for unwieldy project files. The <code>.xcodeproj</code> format
+            stores build settings, file references, and target configurations in a binary-ish plist structure
+            (<code>project.pbxproj</code>) that produces nightmarish diffs and frequent merge conflicts on
+            any team larger than one. FredCam sidesteps this with <strong>XcodeGen</strong>, generating
+            the <code>.xcodeproj</code> from a clean YAML file that&rsquo;s easy to read, edit, and version control.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="xcodegen">XcodeGen: Code-First Project Definition</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <a href="https://github.com/yonaskolb/XcodeGen">XcodeGen</a> is a command-line tool that reads
+            a <code>project.yml</code> file and produces a valid <code>.xcodeproj</code>. The generated project
+            file is <em>not</em> checked into source control &mdash; it&rsquo;s a build artifact, just like
+            a compiled binary. Only <code>project.yml</code> is the source of truth.
+        </p>
+
+        <pre><code class="language-bash"># Install
+brew install xcodegen
+
+# Generate (run after any change to project.yml)
+cd FredCam
+xcodegen generate</code></pre>
+
+        <p>
+            This gives you several benefits over maintaining a hand-written <code>.xcodeproj</code>:
+        </p>
+
+        <ul>
+            <li><strong>Human-readable diffs.</strong> A YAML change like <code>deploymentTarget: iOS: "26.0"</code>
+                is one line. The equivalent change in <code>project.pbxproj</code> touches dozens of locations.</li>
+            <li><strong>No merge conflicts on the project file.</strong> Since <code>.xcodeproj</code> isn&rsquo;t
+                in version control, two developers can&rsquo;t create conflicts in it.</li>
+            <li><strong>Reproducible builds.</strong> A fresh clone produces an identical project by running
+                <code>xcodegen generate</code>.</li>
+        </ul>
+
+        <div class="callout callout-ios">
+            <div class="callout-title">iOS Concept</div>
+            <p>
+                The <code>.xcodeproj</code> bundle contains a file called <code>project.pbxproj</code>.
+                Despite the <code>.pbxproj</code> extension, it&rsquo;s a plain-text format (Apple&rsquo;s
+                old NeXT Property List syntax). It&rsquo;s technically human-readable, but in practice it&rsquo;s
+                a content-addressed graph of UUIDs pointing to build phases, file references, and settings.
+                Adding a single Swift file generates three to five new UUID entries and modifies several existing ones.
+                Reviewing such a diff in a pull request is essentially impossible.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="project-yml-anatomy">Anatomy of project.yml</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Here&rsquo;s the complete <code>project.yml</code> for FredCam, annotated:
+        </p>
+
+        <pre><code class="language-yaml">name: FredCam
+options:
+  bundleIdPrefix: com.bojordan    # prepended to each target's bundle ID
+  deploymentTarget:
+    iOS: "26.0"                   # minimum iOS version
+  xcodeVersion: "16.0"           # Xcode version used to generate
+
+packages:
+  KSPlayer:
+    url: https://github.com/kingslay/KSPlayer.git
+    from: "2.2.0"                 # SPM version constraint: >= 2.2.0, < 3.0.0
+
+targets:
+  FredCam:
+    type: application             # iOS application target
+    platform: iOS
+    sources:
+      - FredCam                   # compile everything in the FredCam/ directory
+    settings:
+      base:
+        INFOPLIST_FILE: FredCam/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.bojordan.FredCam
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        DEVELOPMENT_TEAM: ""      # fill in your team ID for device builds
+        SUPPORTS_MACCATALYST: false
+        TARGETED_DEVICE_FAMILY: "1,2"   # 1 = iPhone, 2 = iPad
+        SWIFT_VERSION: "5.9"
+      debug:
+        VALIDATE_EMBEDDED_BINARY_BUNDLE_IDENTIFIER: "NO"  # suppress warning during development
+    dependencies:
+      - package: KSPlayer
+        product: KSPlayer
+    postBuildScripts:
+      - name: Fix Embedded Framework Bundle Identifiers
+        script: |
+          # ... patches libshaderc_combined's bundle ID (see Section 3)
+        runOnlyWhenInstalling: false</code></pre>
+
+        <p>
+            A few things to note:
+        </p>
+
+        <ul>
+            <li>
+                <strong><code>TARGETED_DEVICE_FAMILY: "1,2"</code></strong> makes the app a universal binary
+                that runs on both iPhone and iPad. Value <code>1</code> is iPhone; <code>2</code> is iPad.
+                Omitting iPad (<code>"1"</code> only) prevents the app from being installed on an iPad
+                even if the user wants to.
+            </li>
+            <li>
+                <strong><code>DEVELOPMENT_TEAM: ""</code></strong> is left empty intentionally. Each developer
+                fills in their own team ID locally. Committing a team ID would break builds for anyone
+                else cloning the repo.
+            </li>
+            <li>
+                <strong><code>VALIDATE_EMBEDDED_BINARY_BUNDLE_IDENTIFIER: "NO"</code></strong> suppresses
+                an Xcode warning in debug builds related to the KSPlayer bundle ID issue we patch in the
+                post-build script.
+            </li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <h2 id="spm">Swift Package Manager</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <strong>Swift Package Manager (SPM)</strong> is Apple&rsquo;s first-party dependency manager,
+            introduced in Swift 3 and integrated directly into Xcode in Xcode 11. It&rsquo;s the modern
+            replacement for CocoaPods and Carthage, and XcodeGen integrates with it natively through the
+            <code>packages</code> section of <code>project.yml</code>.
+        </p>
+
+        <p>
+            The version constraint <code>from: "2.2.0"</code> uses <strong>semantic versioning</strong>:
+        </p>
+
+        <table>
+            <thead>
+                <tr><th>Constraint</th><th>Means</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>from: "2.2.0"</code></td><td>&ge; 2.2.0, &lt; 3.0.0 (next major version)</td></tr>
+                <tr><td><code>exactVersion: "2.2.0"</code></td><td>Exactly 2.2.0, nothing else</td></tr>
+                <tr><td><code>upToNextMinor: "2.2.0"</code></td><td>&ge; 2.2.0, &lt; 2.3.0</td></tr>
+                <tr><td><code>branch: "main"</code></td><td>Always latest on the main branch (not reproducible)</td></tr>
+            </tbody>
+        </table>
+
+        <p>
+            When Xcode resolves the package, it writes a <code>Package.resolved</code> file (analogous to
+            <code>package-lock.json</code> in npm or <code>Cargo.lock</code> in Rust) that pins the exact
+            commit hash. This means <code>from: "2.2.0"</code> doesn&rsquo;t re-resolve to a newer patch
+            version on every build &mdash; it stays locked until you explicitly update.
+        </p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                On first build after <code>xcodegen generate</code>, Xcode fetches and compiles KSPlayer and
+                all its transitive dependencies. KSPlayer ships pre-built XCFrameworks for its FFmpeg and
+                Metal components, so this is mostly a download rather than a compile. Expect one to three
+                minutes on a fast connection. Subsequent builds are instant &mdash; Xcode caches the resolved
+                packages in <code>~/Library/Developer/Xcode/DerivedData</code>.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="post-build-script">The Post-Build Script: A Necessary Workaround</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            KSPlayer ships an embedded framework called <code>libshaderc_combined.framework</code>, which is
+            a Metal shader compiler library from Google. Its bundle identifier is
+            <code>com.kintan.ksplayer.libshaderc_combined</code> &mdash; note the underscore in
+            <code>libshaderc_combined</code>.
+        </p>
+
+        <p>
+            Xcode 26 added strict validation of embedded framework bundle identifiers. Underscores are not
+            valid in reverse-DNS bundle IDs (the spec requires only letters, digits, and hyphens). So building
+            FredCam on Xcode 26 fails with:
+        </p>
+
+        <pre><code class="language-bash">error: "libshaderc_combined" is not a valid bundle identifier</code></pre>
+
+        <p>
+            The fix is to patch the framework&rsquo;s <code>Info.plist</code> after the build phase copies
+            it into the app bundle, replacing underscores with hyphens, and then re-sign the framework so
+            the signature remains valid. The post-build script in <code>project.yml</code> does exactly this:
+        </p>
+
+        <pre><code class="language-bash">find "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}" \
+    -name "*.framework" -maxdepth 1 | while read framework; do
+  plist="$framework/Info.plist"
+  if [ -f "$plist" ]; then
+    bundle_id=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist")
+    fixed_id=$(echo "$bundle_id" | tr '_' '-')
+    if [ "$bundle_id" != "$fixed_id" ]; then
+      /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $fixed_id" "$plist"
+      # Re-sign so the modified framework isn't rejected at install time
+      codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "$framework"
+    fi
+  fi
+done</code></pre>
+
+        <p>
+            This kind of workaround is regrettably common in the iOS dependency ecosystem.
+            Libraries that predate strict validation requirements often have identifiers that were
+            never tested against the latest toolchain rules. The right long-term fix is a pull
+            request upstream to KSPlayer (or its libshaderc packaging) to rename the bundle ID.
+            The post-build script is the pragmatic short-term solution.
+        </p>
+
+        <div class="callout callout-warn">
+            <div class="callout-title">Keep an Eye On This</div>
+            <p>
+                The <code>VALIDATE_EMBEDDED_BINARY_BUNDLE_IDENTIFIER: "NO"</code> debug setting and the
+                post-build patch script are indicators that a dependency needs an upstream fix. If KSPlayer
+                ships an update that corrects the bundle ID, both of these workarounds can be removed.
+                Check the KSPlayer releases when updating the package &mdash; this is the kind of fix
+                that often lands in a patch version.
+            </p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                XcodeGen generates <code>FredCam.xcodeproj</code> from <code>project.yml</code>.
+                Swift Package Manager fetches KSPlayer on first build and locks the version in
+                <code>Package.resolved</code>. A post-build script patches and re-signs
+                KSPlayer&rsquo;s <code>libshaderc_combined.framework</code> to satisfy Xcode 26&rsquo;s
+                bundle ID validation.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section01">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section03">Next &rarr;</a>
+        </nav>

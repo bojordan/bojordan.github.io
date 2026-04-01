@@ -1,0 +1,319 @@
+---
+layout: fredcam
+title: "Adaptive Layout, PiP, and System Permissions — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section08
+---
+
+        <h1><span class="section-number">8.</span> Adaptive Layout, PiP, and System Permissions <span class="tag tag-ios">iOS</span></h1>
+
+        <p>
+            With streaming working, the rest of the app is iOS platform integration: making the layout
+            adapt to portrait and landscape, supporting Picture-in-Picture so you can monitor the printer
+            while doing other things, and correctly configuring the permissions and entitlements that
+            iOS requires before it lets your app touch the local network and run audio in the background.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="orientation">Adaptive Layout with verticalSizeClass</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            iOS doesn&rsquo;t give apps a direct &ldquo;is the device in landscape?&rdquo; boolean.
+            Instead, SwiftUI uses <strong>size classes</strong> &mdash; broad descriptors of how much
+            screen space is available. <code>verticalSizeClass</code> is the one that reliably
+            distinguishes portrait from landscape on iPhone:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Orientation</th>
+                    <th>verticalSizeClass</th>
+                    <th>horizontalSizeClass</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>iPhone portrait</td>
+                    <td><code>.regular</code></td>
+                    <td><code>.compact</code></td>
+                </tr>
+                <tr>
+                    <td>iPhone landscape</td>
+                    <td><code>.compact</code></td>
+                    <td><code>.regular</code></td>
+                </tr>
+                <tr>
+                    <td>iPad (any orientation)</td>
+                    <td><code>.regular</code></td>
+                    <td><code>.regular</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            FredCam reads the vertical size class from the SwiftUI environment and maps it to a simple boolean:
+        </p>
+
+        <pre><code class="language-swift">@Environment(\.verticalSizeClass) var verticalSizeClass
+
+private var isLandscape: Bool { verticalSizeClass == .compact }</code></pre>
+
+        <p>
+            The streaming layout then chooses between horizontal and vertical composition:
+        </p>
+
+        <pre><code class="language-swift">@ViewBuilder
+private var streamingLayout: some View {
+    if isLandscape {
+        HStack(spacing: 0) {
+            videoArea
+            landscapeControlBar
+                .frame(width: 88)
+        }
+    } else {
+        VStack(spacing: 0) {
+            videoArea
+            portraitControlBar
+                .frame(height: 88)
+        }
+    }
+}</code></pre>
+
+        <p>
+            In portrait, the control bar sits below the video (an 88-point tall strip).
+            In landscape, it sits to the side (an 88-point wide strip). The video fills the remaining space.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="stable-identity">Stable View Identity: The Critical Rule</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            There&rsquo;s a subtle and important constraint in the layout code: <code>CameraView</code>
+            must never move to a different position in the SwiftUI view tree.
+        </p>
+
+        <p>
+            SwiftUI tracks views by their position in the hierarchy. If a view moves &mdash; from inside
+            an <code>HStack</code> to inside a <code>VStack</code>, for example &mdash; SwiftUI treats
+            it as a destruction of the old view and creation of a new one. For most views, this is fine.
+            For <code>CameraView</code>, it would destroy the KSPlayer instance, close the RTSP
+            connection, and start a new one from scratch. Every orientation change would interrupt the stream.
+        </p>
+
+        <p>
+            The solution: <code>videoArea</code> is a computed property that always lives at the same
+            structural position, regardless of orientation. Both the <code>HStack</code> (landscape)
+            and the <code>VStack</code> (portrait) paths put <code>videoArea</code> as their
+            <em>first</em> child. The container changes; the video doesn&rsquo;t move within it.
+        </p>
+
+        <p>
+            Separately, the control bars are two distinct views:
+            <code>portraitControlBar</code> and <code>landscapeControlBar</code>. You might expect
+            a single <code>controlBar</code> view that rearranges itself. But if the same view
+            switches from the first position in a <code>VStack</code> to the second position in
+            an <code>HStack</code>, SwiftUI sees it as a different view. Maintaining separate views
+            for each orientation gives each a stable, predictable identity.
+        </p>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Concept</div>
+            <p>
+                You can force stable identity with the <code>.id()</code> modifier, but that&rsquo;s
+                a last resort &mdash; it tells SwiftUI &ldquo;treat this as the same view across
+                recompositions&rdquo; but it doesn&rsquo;t prevent the view from moving in the tree.
+                The cleanest solution is structural: position the view identically across all layout branches.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="overlays">ZStack Overlays</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            The video area uses a <code>ZStack</code> to layer connecting and error overlays on top
+            of the video:
+        </p>
+
+        <pre><code class="language-swift">private var videoArea: some View {
+    ZStack {
+        Color.black
+
+        if let url = settings.streamURL {
+            CameraView(url: url, streamState: $streamState) { action in
+                pipAction = action
+            }
+            .opacity(streamState.isLive ? 1 : 0)
+            .animation(.easeIn(duration: 0.5), value: streamState.isLive)
+        }
+
+        if case .connecting = streamState {
+            connectingOverlay
+                .transition(.opacity)
+        }
+
+        if case .error(let msg) = streamState {
+            errorOverlay(message: msg)
+                .transition(.opacity)
+        }
+    }
+    .animation(.easeInOut(duration: 0.3), value: streamState.phase)
+}</code></pre>
+
+        <p>
+            Layers in a <code>ZStack</code> go back-to-front: black background, then the video,
+            then the connecting overlay, then the error overlay. The video&rsquo;s opacity is 0
+            when not live (so you see the background through it), then fades in to 1 when the
+            stream is ready. The overlays appear and disappear with <code>.transition(.opacity)</code>.
+        </p>
+
+        <p>
+            The <code>PulsingIcon</code> used in the connecting overlay is a custom SwiftUI view:
+        </p>
+
+        <pre><code class="language-swift">struct PulsingIcon: View {
+    let systemName: String
+    let color: Color
+    @State private var pulsing = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color.opacity(0.15))
+                .frame(width: 90, height: 90)
+                .scaleEffect(pulsing ? 1.35 : 1.0)
+                .opacity(pulsing ? 0 : 0.6)
+                .animation(
+                    .easeOut(duration: 1.2).repeatForever(autoreverses: false),
+                    value: pulsing
+                )
+            Circle()
+                .fill(color.opacity(0.25))
+                .frame(width: 70, height: 70)
+            Image(systemName: systemName)
+                .font(.system(size: 30, weight: .medium))
+                .foregroundColor(color)
+        }
+        .onAppear { pulsing = true }
+    }
+}</code></pre>
+
+        <p>
+            On <code>onAppear</code>, <code>pulsing</code> flips to <code>true</code>, triggering
+            the animation. The outer circle scales up and fades out repeatedly, giving the radar-ping
+            effect. <code>repeatForever(autoreverses: false)</code> means the animation repeats
+            indefinitely without reversing &mdash; it scales up and fades, then immediately jumps
+            back to scale 1 and full opacity before repeating.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="pip">Picture-in-Picture</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Picture-in-Picture (PiP) lets the video float in a small overlay window while the user
+            switches to another app. KSPlayer handles most of the PiP mechanics; the app just needs
+            to configure it correctly.
+        </p>
+
+        <p>
+            Three pieces are required:
+        </p>
+
+        <ol>
+            <li>
+                <strong>The KSOptions flag:</strong>
+                <pre><code class="language-swift">options.canStartPictureInPictureAutomaticallyFromInline = true</code></pre>
+                This tells KSPlayer (and the underlying AVPlayerLayer) that PiP can start
+                automatically when the app moves to the background. Without it, PiP only starts
+                on explicit user action.
+            </li>
+            <li>
+                <strong>The Info.plist background mode:</strong>
+                <pre><code class="language-xml">&lt;key&gt;UIBackgroundModes&lt;/key&gt;
+&lt;array&gt;
+    &lt;string&gt;audio&lt;/string&gt;
+&lt;/array&gt;</code></pre>
+                The <code>audio</code> background mode is required for any video/audio playback
+                that should continue when the app is backgrounded, including PiP. Without this
+                entry, iOS suspends the app when it leaves the foreground and PiP stops.
+            </li>
+            <li>
+                <strong>The toggle action (covered in Section 6):</strong> the <code>onPipReady</code>
+                closure that surfaces <code>layer.isPipActive.toggle()</code> up to the PiP button.
+            </li>
+        </ol>
+
+        <!-- ============================================================ -->
+        <h2 id="permissions">Local Network and App Transport Security</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            iOS 14 introduced strict local network access controls. Apps must declare their intent
+            to use the local network and provide a user-facing explanation. Two <code>Info.plist</code>
+            entries handle this:
+        </p>
+
+        <pre><code class="language-xml">&lt;key&gt;NSLocalNetworkUsageDescription&lt;/key&gt;
+&lt;string&gt;FredCam needs local network access to connect to your Bambu Lab printer.&lt;/string&gt;
+
+&lt;key&gt;NSBonjourServices&lt;/key&gt;
+&lt;array&gt;
+    &lt;string&gt;_rtsp._tcp&lt;/string&gt;
+&lt;/array&gt;</code></pre>
+
+        <p>
+            <code>NSLocalNetworkUsageDescription</code> is the permission prompt shown to the user
+            the first time the app tries to access the local network. If this key is missing, iOS
+            silently blocks the connection with no explanation &mdash; one of the more confusing
+            failure modes for new iOS developers.
+        </p>
+
+        <p>
+            <code>NSBonjourServices</code> declares which mDNS (Bonjour) service types the app
+            will browse or advertise. Even though FredCam connects directly by IP and doesn&rsquo;t
+            do any mDNS discovery, the <code>_rtsp._tcp</code> declaration is required by iOS to
+            grant local network socket access for RTSP connections on TCP. Without it, the local
+            network permission prompt may not appear at the right time.
+        </p>
+
+        <p>
+            <strong>App Transport Security (ATS)</strong> is Apple&rsquo;s enforce-HTTPS mechanism.
+            Since RTSPS is not HTTP, ATS doesn&rsquo;t directly apply. But to allow any plaintext
+            local-network communication (including the RTSP control channel, which can have plain
+            sub-connections), the plist includes:
+        </p>
+
+        <pre><code class="language-xml">&lt;key&gt;NSAppTransportSecurity&lt;/key&gt;
+&lt;dict&gt;
+    &lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;
+    &lt;true/&gt;
+&lt;/dict&gt;</code></pre>
+
+        <p>
+            <code>NSAllowsArbitraryLoads: true</code> disables ATS globally. This is broader than
+            necessary &mdash; a tighter configuration would use <code>NSExceptionDomains</code> to
+            allow only the printer&rsquo;s IP address. For a personal-use app that always connects
+            to a known LAN device, the broad exception is acceptable. For an App Store submission
+            that Apple reviews, a narrower exception with a justification in the review notes is
+            the better approach.
+        </p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                Adaptive layout uses <code>verticalSizeClass</code> to switch between HStack and
+                VStack compositions. <code>CameraView</code> sits at a stable position in both to
+                avoid stream disruption on rotation. ZStack overlays handle the connecting and error
+                states. PiP requires the KSOptions flag plus the <code>audio</code> background mode
+                in Info.plist. Local network access requires <code>NSLocalNetworkUsageDescription</code>
+                and <code>NSBonjourServices</code>.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section07">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section09">Next &rarr;</a>
+        </nav>

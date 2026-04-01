@@ -1,0 +1,232 @@
+---
+layout: fredcam
+title: "App State — The StreamState Machine — FredCam Tutorial"
+permalink: /projects/fredcam/tutorial/section05
+---
+
+        <h1><span class="section-number">5.</span> App State &mdash; The StreamState Machine <span class="tag tag-arch">Arch</span></h1>
+
+        <p>
+            A streaming app has discrete, well-defined phases: the user hasn&rsquo;t started anything,
+            something is connecting, video is playing, or something went wrong. These aren&rsquo;t
+            continuous values &mdash; they&rsquo;re states in a state machine. FredCam models this with
+            a Swift <code>enum</code>, which turns out to be a remarkably good fit.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="streamstate-enum">The StreamState Enum</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-swift">enum StreamState {
+    case idle
+    case connecting
+    case live
+    case error(String)
+}</code></pre>
+
+        <p>
+            This is a Swift <strong>enum with an associated value</strong>. Most cases carry no data,
+            but <code>error</code> carries a <code>String</code> message describing what went wrong.
+            This is equivalent to a discriminated union in F#, or a Rust <code>enum</code> variant
+            with data &mdash; it&rsquo;s more powerful than C#&rsquo;s plain enum.
+        </p>
+
+        <p>
+            The state transitions are:
+        </p>
+
+        <div class="diagram">
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                       StreamState Machine                       │
+  └─────────────────────────────────────────────────────────────────┘
+
+       tap "Start Stream"         KSPlayer bufferFinished
+  <em>idle</em> ──────────────────▶ <em>connecting</em> ──────────────────▶ <em>live</em>
+    ▲                              │                           │
+    │ tap Stop                     │ KSPlayer error            │ KSPlayer error
+    │                              ▼                           │
+    └──────────────────────── <em>error(msg)</em> ◀──────────────────┘
+                                   │
+                tap "Try Again"    │
+                (→ connecting)     │
+                ◀──────────────────┘
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="pattern-matching">Pattern Matching: switch and if case</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Reading the current state in Swift uses <code>switch</code> or <code>if case</code> pattern
+            matching. You&rsquo;ll see both patterns throughout <code>ContentView.swift</code>:
+        </p>
+
+        <pre><code class="language-swift">// switch — exhaustive, covers all cases
+switch streamState {
+case .idle:
+    showIdleScreen()
+case .connecting:
+    showSpinner()
+case .live:
+    showVideo()
+case .error(let message):
+    showError(message)  // 'message' is the associated String
+}
+
+// if case — check a single case, optionally bind associated value
+if case .error(let msg) = streamState {
+    Text(msg)
+}
+
+// if case without binding — just check which case
+if case .connecting = streamState {
+    // stay in connecting state, don't overwrite it
+}</code></pre>
+
+        <p>
+            The <code>switch</code> on a Swift enum is <strong>exhaustive</strong>: if you add a new
+            case to <code>StreamState</code>, every <code>switch</code> statement in the codebase that
+            doesn&rsquo;t include it becomes a compile error. This is one of Swift&rsquo;s best
+            features for maintainability &mdash; the compiler enforces that you handle every state.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="helper-extensions">Enum Extensions for Convenience</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Pattern matching is expressive, but it&rsquo;s verbose for simple boolean checks.
+            <code>ContentView.swift</code> extends <code>StreamState</code> with two helpers at the bottom:
+        </p>
+
+        <pre><code class="language-swift">extension StreamState {
+    var isLive: Bool {
+        if case .live = self { return true }
+        return false
+    }
+
+    var phase: Int {
+        switch self {
+        case .idle:       return 0
+        case .connecting: return 1
+        case .live:       return 2
+        case .error:      return 3
+        }
+    }
+}</code></pre>
+
+        <p>
+            <code>isLive</code> is used to fade the video layer in or out:
+        </p>
+
+        <pre><code class="language-swift">CameraView(...)
+    .opacity(streamState.isLive ? 1 : 0)
+    .animation(.easeIn(duration: 0.5), value: streamState.isLive)</code></pre>
+
+        <p>
+            <code>phase</code> is used as the animation trigger for the overlay container.
+            SwiftUI&rsquo;s <code>.animation(_:value:)</code> modifier needs a value that conforms
+            to <code>Equatable</code> &mdash; it compares the old and new values to decide when to
+            animate. A raw enum with associated values isn&rsquo;t directly <code>Equatable</code>
+            in Swift (because associated values need their own equality), but an <code>Int</code>
+            always is. Mapping states to phases gives SwiftUI a clean, comparable trigger.
+        </p>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Concept</div>
+            <p>
+                Alternatively, you could make <code>StreamState</code> conform to <code>Equatable</code>
+                manually or by synthesizing it with <code>enum StreamState: Equatable</code>. That works
+                for cases without associated values, but the <code>error(String)</code> case complicates
+                equality &mdash; two different error messages would be considered different states, which
+                might or might not be what you want for animation triggers. The <code>phase</code> integer
+                is a deliberate simplification: it says &ldquo;the phase changed,&rdquo; not &ldquo;the
+                exact state changed.&rdquo;
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="is-streaming-computed">isStreaming: The View-Control Computed Property</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            The top-level view body in <code>ContentView</code> switches between idle layout and
+            streaming layout based on a computed property:
+        </p>
+
+        <pre><code class="language-swift">// True for every state except idle — keeps CameraView alive through errors
+private var isStreaming: Bool {
+    if case .idle = streamState { return false }
+    return true
+}</code></pre>
+
+        <p>
+            The comment is the key insight: <code>isStreaming</code> is <code>true</code> even in the
+            <code>.error</code> state. This keeps <code>CameraView</code> (and therefore KSPlayer)
+            alive in the view hierarchy when an error occurs, so that tapping &ldquo;Try Again&rdquo;
+            can reconnect without tearing down and recreating the player from scratch.
+        </p>
+
+        <p>
+            If <code>isStreaming</code> returned <code>false</code> during errors, the view would flip
+            back to the idle screen, then back to streaming when the user tapped Retry, which would
+            destroy and recreate <code>CameraView</code> on every retry attempt. The current design
+            keeps the player alive and lets the error overlay sit on top of it.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="state-in-view">State in ContentView</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>StreamState</code> lives as a <code>@State</code> variable in <code>ContentView</code>:
+        </p>
+
+        <pre><code class="language-swift">@State private var streamState: StreamState = .idle</code></pre>
+
+        <p>
+            <code>@State</code> is for <strong>view-local</strong> state &mdash; values that one view
+            owns and that don&rsquo;t need to be observed by sibling views or a parent. SwiftUI
+            stores it outside the struct (since structs are value types and are recreated on every
+            render) and gives you a stable storage location that persists as long as the view is
+            in the hierarchy.
+        </p>
+
+        <p>
+            <code>CameraView</code> needs to both read and write <code>streamState</code> &mdash; it
+            reads it to decide what to render, and the player&rsquo;s delegate needs to write to it
+            when the stream connects or fails. This is done with a <code>@Binding</code>:
+        </p>
+
+        <pre><code class="language-swift">// ContentView passes a binding down
+CameraView(url: url, streamState: $streamState) { action in
+    pipAction = action
+}
+
+// CameraView declares it as a binding
+struct CameraView: UIViewRepresentable {
+    @Binding var streamState: StreamState
+    // ...
+}</code></pre>
+
+        <p>
+            The <code>$</code> prefix creates a <code>Binding&lt;StreamState&gt;</code> &mdash; a
+            two-way reference that lets the child view read and write the parent&rsquo;s state.
+            Think of it as passing a reference to a variable rather than a copy of its value.
+        </p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Summary</div>
+            <p>
+                <code>StreamState</code> is a Swift enum with associated values modeling four app phases.
+                Pattern matching (<code>switch</code>, <code>if case</code>) extracts state and associated
+                data cleanly. Helper properties on the enum provide convenient boolean checks for
+                SwiftUI view logic. State lives in <code>ContentView</code> as <code>@State</code>
+                and is shared downward to <code>CameraView</code> via <code>@Binding</code>.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/fredcam/tutorial/section04">&larr; Previous</a>
+            <a href="/projects/fredcam/tutorial/section06">Next &rarr;</a>
+        </nav>
