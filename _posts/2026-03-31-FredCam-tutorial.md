@@ -11,7 +11,7 @@ Six Swift files, about 650 lines of code.
 
 ### The tutorial
 
-The interesting thing about building this wasn't just making the stream work — it was everything around it: choosing the right dependency, understanding what you're signing up for license-wise, bridging UIKit into SwiftUI, modeling app state cleanly. The app is small but dense with real-world decisions.
+The interesting thing about building this wasn't just making the stream work (KSplayer pretty much takes care of that) — it was everything around it: choosing the right dependency, understanding what you're signing up for license-wise, bridging UIKit into SwiftUI, modeling app state cleanly. The app is small but dense with real-world decisions.
 
 This was written up as a [10-section tutorial](/projects/fredcam/tutorial/) aimed at programmers who know how to code but haven't spent much time in Swift or iOS.
 
