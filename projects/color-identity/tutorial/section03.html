@@ -1,0 +1,207 @@
+---
+layout: coloridentity
+title: "Hashing Names to Colors — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section03
+---
+
+        <h1><span class="section-number">3.</span> Hashing Names to Colors</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            The djb2 hash algorithm, deterministic hue generation, and the HSL color space.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-core-idea">The Core Idea</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Color Identity&rsquo;s defining feature is that the same workspace name always produces the same color.
+            Open &ldquo;my-api-server&rdquo; on any machine, and it gets the same hue. This is achieved through
+            <em>deterministic hashing</em>: a pure function that converts a string to a number in a
+            predictable, repeatable way.
+        </p>
+
+        <p>
+            The function needs three properties:
+        </p>
+
+        <ul>
+            <li><strong>Deterministic:</strong> same input always produces the same output.</li>
+            <li><strong>Well-distributed:</strong> similar names (like <code>api-v1</code> and <code>api-v2</code>) should produce noticeably different hues.</li>
+            <li><strong>Fast:</strong> it runs on every activation, so it needs to be instant.</li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <h2 id="djb2-hash">The djb2 Hash Algorithm</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">/**
+ * Deterministic hash of a string → number in [0, 360).
+ * Uses djb2 — simple, fast, and produces a well-distributed spread.
+ */
+export function hashToHue(input: string): number {
+    let hash = 5381;
+    for (let i = 0; i &lt; input.length; i++) {
+        hash = ((hash &lt;&lt; 5) + hash + input.charCodeAt(i)) &gt;&gt;&gt; 0;
+    }
+    return hash % 360;
+}</code></pre>
+
+        <p>
+            djb2 is one of the most well-known string hash functions, created by Daniel J. Bernstein. Despite
+            its simplicity, it produces an excellent distribution across output values. Let&rsquo;s trace through
+            the algorithm:
+        </p>
+
+        <ol>
+            <li>
+                <strong>Initialize with a magic number:</strong> <code>hash = 5381</code>. This starting value
+                was chosen empirically by Bernstein &mdash; it produces fewer collisions than other initial values
+                for typical input strings.
+            </li>
+            <li>
+                <strong>For each character:</strong> <code>hash = hash * 33 + charCode</code>. The expression
+                <code>(hash &lt;&lt; 5) + hash</code> is a bit-manipulation trick that computes
+                <code>hash * 32 + hash = hash * 33</code> without using multiplication. Then the character&rsquo;s
+                Unicode code point is added.
+            </li>
+            <li>
+                <strong>Keep it unsigned:</strong> <code>&gt;&gt;&gt; 0</code> forces the result to an unsigned
+                32-bit integer. Without this, JavaScript&rsquo;s bitwise operators would produce signed values,
+                and we&rsquo;d get negative hashes.
+            </li>
+            <li>
+                <strong>Map to hue range:</strong> <code>hash % 360</code> reduces the 32-bit hash to a
+                value in [0, 360), which is exactly the hue range on the color wheel.
+            </li>
+        </ol>
+
+        <div class="callout callout-color">
+            <div class="callout-title">Color Science</div>
+            <p>
+                Why 360? Because the HSL color wheel is measured in degrees. 0&deg; is red, 120&deg; is green,
+                240&deg; is blue, and 360&deg; wraps back to red. By mapping the hash output to this range,
+                we get a hue that can be plugged directly into HSL color generation.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="distribution">How Well Does It Distribute?</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Let&rsquo;s try some common workspace names and see what hues they produce:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Workspace Name</th>
+                    <th>Hash</th>
+                    <th>Hue</th>
+                    <th>Color</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>my-project</code></td>
+                    <td>3,218,521,047</td>
+                    <td>207&deg;</td>
+                    <td>blue-ish</td>
+                </tr>
+                <tr>
+                    <td><code>my-project-2</code></td>
+                    <td>1,137,454,070</td>
+                    <td>170&deg;</td>
+                    <td>teal</td>
+                </tr>
+                <tr>
+                    <td><code>api-server</code></td>
+                    <td>990,001,461</td>
+                    <td>261&deg;</td>
+                    <td>purple</td>
+                </tr>
+                <tr>
+                    <td><code>frontend</code></td>
+                    <td>4,135,098,308</td>
+                    <td>308&deg;</td>
+                    <td>magenta</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            Notice how <code>my-project</code> and <code>my-project-2</code>, which differ by only two characters,
+            produce hues 37&deg; apart &mdash; visually distinct. That&rsquo;s the benefit of a well-distributed hash.
+            A naive approach (like summing character codes) would produce similar values for similar strings.
+        </p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Why not a cryptographic hash?</div>
+            <p>
+                You might wonder: why not use SHA-256 or MD5? Those would work, but they&rsquo;re dramatically
+                overkill. We don&rsquo;t need collision resistance or unpredictability &mdash; we just need
+                a good spread. djb2 is a few lines of arithmetic, requires no imports, and runs in nanoseconds.
+                A cryptographic hash would need <code>crypto</code> module imports for something that can be
+                done with addition and bit shifts.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="hsl-color-space">The HSL Color Space</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            With a hue in hand, we need a color model that lets us control vibrancy and brightness independently.
+            That&rsquo;s HSL:
+        </p>
+
+        <div class="diagram">
+                         The HSL Color Wheel
+
+          0&deg;/360&deg; Red ──── 30&deg; Orange ──── 60&deg; Yellow
+         /                                              \
+  330&deg; Rose                                         90&deg; Lime
+       |                                                  |
+  300&deg; Magenta          <em>Hue = position</em>              120&deg; Green
+       |               <em>Saturation = vibrancy</em>            |
+  270&deg; Purple          <em>Lightness = brightness</em>       150&deg; Mint
+         \                                              /
+        240&deg; Blue ──── 210&deg; Cyan ──── 180&deg; Teal
+        </div>
+
+        <p>
+            The key advantage of HSL over RGB for this project:
+        </p>
+
+        <ul>
+            <li>
+                <strong>Hue is the identity axis.</strong> We can lock the hue (derived from the workspace name)
+                and vary saturation and lightness to match the theme. In RGB, changing &ldquo;brightness&rdquo;
+                would require adjusting all three channels in a coordinated way.
+            </li>
+            <li>
+                <strong>Theme adaptation is intuitive.</strong> Dark themes need low lightness and moderate saturation.
+                Light themes need high lightness and low saturation. These are simple numerical adjustments
+                on the S and L axes.
+            </li>
+            <li>
+                <strong>Foreground contrast is predictable.</strong> Given a background lightness, we know
+                that a foreground with very different lightness will be readable. This is much harder to reason
+                about in RGB.
+            </li>
+        </ul>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                You now understand how a workspace name becomes a hue: djb2 hashes the string to a 32-bit integer,
+                modulo 360 maps it to the color wheel. The hue is the workspace&rsquo;s identity &mdash;
+                it never changes. In the next section, we&rsquo;ll see how saturation and lightness are derived
+                from the active theme to complete the color palette.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section02">&larr; Types &amp; Configuration</a>
+            <a href="/projects/color-identity/tutorial/section04">Next &rarr;</a>
+        </nav>

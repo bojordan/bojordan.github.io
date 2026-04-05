@@ -1,0 +1,298 @@
+---
+layout: coloridentity
+title: "PNG Swatch Generation from Scratch — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section07
+---
+
+        <h1><span class="section-number">7.</span> PNG Swatch Generation from Scratch</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            Building valid PNG files from raw pixels using only Node&rsquo;s <code>zlib</code> &mdash; no image library needed.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="why-generate-pngs">Why Generate PNGs?</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            The color picker needs 16&times;16 solid-color icons &mdash; one per preset, re-generated whenever
+            the theme changes (because the same hue looks different at different saturation and lightness levels).
+            We could bundle static PNGs, but they wouldn&rsquo;t be theme-aware. We could use an image library,
+            but that&rsquo;s a heavy dependency for something this simple.
+        </p>
+
+        <p>
+            Instead, <code>swatchGenerator.ts</code> implements PNG encoding from first principles.
+            A solid-color 16&times;16 PNG is about as simple as a PNG file can be, and it turns out that building
+            one requires understanding exactly three things: the PNG chunk format, DEFLATE compression, and CRC-32 checksums.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="png-file-structure">PNG File Structure</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Every PNG file follows the same structure:
+        </p>
+
+        <div class="diagram">
+ PNG File
+┌──────────────────────────────────────────────┐
+│  <em>8-byte signature</em>  (magic bytes)              │
+├──────────────────────────────────────────────┤
+│  <em>IHDR chunk</em>  (image header: dimensions, type) │
+├──────────────────────────────────────────────┤
+│  <em>IDAT chunk</em>  (compressed pixel data)           │
+├──────────────────────────────────────────────┤
+│  <em>IEND chunk</em>  (end marker)                      │
+└──────────────────────────────────────────────┘
+
+Each chunk:
+┌────────┬────────┬──────────┬─────────┐
+│ length │  type  │   data   │  CRC-32 │
+│ 4 bytes│ 4 bytes│ N bytes  │ 4 bytes │
+└────────┴────────┴──────────┴─────────┘
+        </div>
+
+        <p>
+            The signature is always the same eight bytes: <code>137 80 78 71 13 10 26 10</code>.
+            In ASCII, bytes 1&ndash;3 spell &ldquo;PNG&rdquo;. The surrounding bytes are designed to detect
+            common file transfer corruptions (wrong line endings, stripped high bits, etc.).
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="building-raw-pixels">Building Raw Pixel Data</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">function createSolidPng(hex: string, size: number): Buffer {
+    const { r, g, b } = hexToRgb(hex);
+
+    // Build raw image data: each row starts with a filter byte (0 = None)
+    const rowLen = 1 + size * 4; // filter byte + RGBA * width
+    const raw = Buffer.alloc(rowLen * size);
+    for (let y = 0; y &lt; size; y++) {
+        const offset = y * rowLen;
+        raw[offset] = 0; // filter: None
+        for (let x = 0; x &lt; size; x++) {
+            const px = offset + 1 + x * 4;
+            raw[px] = r;
+            raw[px + 1] = g;
+            raw[px + 2] = b;
+            raw[px + 3] = 255; // fully opaque
+        }
+    }</code></pre>
+
+        <p>
+            PNG&rsquo;s raw pixel format has a quirk: every row starts with a <em>filter byte</em> that tells the
+            decoder how to interpret the row. Filter 0 means &ldquo;None&rdquo; &mdash; the bytes are literal RGBA values.
+            For a solid color, no filtering is needed, so every row gets a zero byte prefix.
+        </p>
+
+        <p>
+            Each pixel is 4 bytes: red, green, blue, alpha. For a 16&times;16 image, that&rsquo;s
+            <code>16 &times; (1 + 16 &times; 4) = 16 &times; 65 = 1040</code> bytes of raw data.
+        </p>
+
+        <div class="callout callout-color">
+            <div class="callout-title">Color Science</div>
+            <p>
+                The <code>hexToRgb</code> function at the bottom of the file does the reverse of
+                <code>hslToHex</code>: it takes a <code>#rrggbb</code> string and extracts three integers.
+                The full color pipeline is: hue &rarr; HSL &rarr; hex string &rarr; RGB integers &rarr; PNG bytes.
+                Each conversion happens at a different layer of the system.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="deflate-compression">DEFLATE Compression</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">    const compressed = zlib.deflateSync(raw);</code></pre>
+
+        <p>
+            One line. PNG requires its pixel data to be compressed with the DEFLATE algorithm (the same
+            one used in ZIP files and gzip). Node&rsquo;s built-in <code>zlib</code> module provides
+            <code>deflateSync</code>, which compresses a buffer synchronously.
+        </p>
+
+        <p>
+            For a 16&times;16 solid-color image, DEFLATE compresses extremely well &mdash; every row
+            is identical, so the algorithm finds massive repetition. The 1040 bytes of raw data typically
+            compress to around 30&ndash;40 bytes.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="assembling-chunks">Assembling PNG Chunks</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">    // Assemble PNG file
+    const chunks: Buffer[] = [];
+
+    // Signature
+    chunks.push(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+
+    // IHDR
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(size, 0);  // width
+    ihdr.writeUInt32BE(size, 4);  // height
+    ihdr[8] = 8;                   // bit depth
+    ihdr[9] = 6;                   // color type: RGBA
+    ihdr[10] = 0;                  // compression
+    ihdr[11] = 0;                  // filter
+    ihdr[12] = 0;                  // interlace
+    chunks.push(pngChunk('IHDR', ihdr));
+
+    // IDAT
+    chunks.push(pngChunk('IDAT', compressed));
+
+    // IEND
+    chunks.push(pngChunk('IEND', Buffer.alloc(0)));
+
+    return Buffer.concat(chunks);
+}</code></pre>
+
+        <p>
+            The IHDR chunk is 13 bytes of metadata:
+        </p>
+
+        <ul>
+            <li><strong>Width and height</strong> as big-endian 32-bit integers.</li>
+            <li><strong>Bit depth 8:</strong> each channel uses 8 bits (0&ndash;255).</li>
+            <li><strong>Color type 6:</strong> RGBA (red, green, blue, alpha).</li>
+            <li><strong>Compression, filter, interlace:</strong> all zero (standard settings).</li>
+        </ul>
+
+        <p>
+            The IDAT chunk wraps the DEFLATE-compressed pixel data. IEND is an empty chunk that signals
+            the end of the file. Each chunk is wrapped by the <code>pngChunk</code> helper:
+        </p>
+
+        <pre><code class="language-typescript">function pngChunk(type: string, data: Buffer): Buffer {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length, 0);
+
+    const typeAndData = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+
+    const crc = crc32(typeAndData);
+    const crcBuf = Buffer.alloc(4);
+    crcBuf.writeUInt32BE(crc &gt;&gt;&gt; 0, 0);
+
+    return Buffer.concat([length, typeAndData, crcBuf]);
+}</code></pre>
+
+        <p>
+            Every chunk follows the same format: 4-byte length, 4-byte type name, N bytes of data,
+            and a 4-byte CRC-32 checksum computed over the type and data bytes (but not the length).
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="crc32">CRC-32 Checksums</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">const crcTable: number[] = [];
+for (let n = 0; n &lt; 256; n++) {
+    let c = n;
+    for (let k = 0; k &lt; 8; k++) {
+        c = c & 1 ? 0xedb88320 ^ (c &gt;&gt;&gt; 1) : c &gt;&gt;&gt; 1;
+    }
+    crcTable[n] = c;
+}
+
+function crc32(buf: Buffer): number {
+    let crc = 0xffffffff;
+    for (let i = 0; i &lt; buf.length; i++) {
+        crc = crcTable[(crc ^ buf[i]) & 0xff] ^ (crc &gt;&gt;&gt; 8);
+    }
+    return crc ^ 0xffffffff;
+}</code></pre>
+
+        <p>
+            CRC-32 (Cyclic Redundancy Check, 32-bit) is an error-detection algorithm. PNG requires it
+            on every chunk to detect data corruption. The implementation is the standard table-driven
+            approach:
+        </p>
+
+        <ol>
+            <li>
+                <strong>Build a 256-entry lookup table</strong> at module load time. Each entry encodes the
+                CRC contribution of one byte value. The magic constant <code>0xedb88320</code> is the
+                bit-reversed form of the standard CRC-32 polynomial.
+            </li>
+            <li>
+                <strong>Process each byte:</strong> XOR it with the current CRC, look up the result in the table,
+                and XOR with the shifted CRC. This is a standard algorithm you&rsquo;ll find in the
+                PNG specification, RFC 1952 (gzip), and countless other formats.
+            </li>
+            <li>
+                <strong>Final XOR:</strong> The initial and final XOR with <code>0xffffffff</code> is part of
+                the CRC-32 specification (it improves detection of certain error patterns).
+            </li>
+        </ol>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                The entire PNG encoder is about 90 lines of code. Compare this to pulling in a dependency like
+                <code>sharp</code> (which includes native binaries and weighs tens of megabytes) or
+                <code>pngjs</code> (which adds another package to audit and maintain). For a solid-color
+                16&times;16 swatch, the hand-rolled encoder is not just sufficient &mdash; it&rsquo;s
+                the obviously correct choice. Know when to reach for a library and when to just write the code.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="caching">Caching and Cache Invalidation</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">export function generateColorSwatch(
+    storageDir: string,
+    hex: string,
+    size: number = 16
+): vscode.Uri {
+    const fileName = `swatch-${hex.replace('#', '')}.png`;
+    const filePath = path.join(storageDir, fileName);
+
+    if (!fs.existsSync(filePath)) {
+        const pngBuffer = createSolidPng(hex, size);
+        fs.mkdirSync(storageDir, { recursive: true });
+        fs.writeFileSync(filePath, pngBuffer);
+    }
+
+    return vscode.Uri.file(filePath);
+}</code></pre>
+
+        <p>
+            Swatches are cached by hex color in the extension&rsquo;s global storage directory. If a swatch
+            for <code>#2a3847</code> already exists, it&rsquo;s reused. The filename encodes the hex color,
+            so the cache is self-keying.
+        </p>
+
+        <pre><code class="language-typescript">export function clearSwatchCache(storageDir: string): void {
+    if (!fs.existsSync(storageDir)) {
+        return;
+    }
+    for (const file of fs.readdirSync(storageDir)) {
+        if (file.startsWith('swatch-') && file.endsWith('.png')) {
+            fs.unlinkSync(path.join(storageDir, file));
+        }
+    }
+}</code></pre>
+
+        <p>
+            When the user switches themes, the entire swatch cache is cleared because every swatch needs
+            to be regenerated with new saturation and lightness values. This is called from the theme
+            change listener in <code>extension.ts</code> (Section 8).
+        </p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                You&rsquo;ve seen how to encode a valid PNG from raw pixels using nothing but Node&rsquo;s
+                built-in <code>zlib</code>, some buffer arithmetic, and a CRC-32 table. The final section
+                ties everything together: the extension lifecycle, event listeners, and the status bar.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section06">&larr; The Color Picker UI</a>
+            <a href="/projects/color-identity/tutorial/section08">Next &rarr;</a>
+        </nav>

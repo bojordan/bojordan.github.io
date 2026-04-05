@@ -1,0 +1,277 @@
+---
+layout: coloridentity
+title: "Extension Lifecycle & Event-Driven Reactivity — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section08
+---
+
+        <h1><span class="section-number">8.</span> Extension Lifecycle &amp; Event-Driven Reactivity</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            How <code>extension.ts</code> ties every module together through activation, commands, and event listeners.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-activate-function">The activate() Function</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>extension.ts</code> is the entry point. When VS Code activates the extension (after startup
+            finishes, as declared in <code>package.json</code>), it calls <code>activate(context)</code>.
+            The <code>context</code> parameter provides storage paths and a subscription list for cleanup.
+        </p>
+
+        <pre><code class="language-typescript">export function activate(context: vscode.ExtensionContext) {
+    // Set up swatch cache directory in extension's global storage
+    swatchDir = path.join(context.globalStorageUri.fsPath, 'swatches');
+
+    // Status bar item — click to open color picker
+    statusBarItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Left,
+        50
+    );
+    statusBarItem.command = 'colorIdentity.chooseColor';
+    statusBarItem.show();
+    context.subscriptions.push(statusBarItem);
+
+    // Apply colors on startup
+    applyIdentityColors();
+}</code></pre>
+
+        <p>
+            The first thing <code>activate</code> does is set up infrastructure:
+        </p>
+
+        <ul>
+            <li>
+                <strong>Swatch directory:</strong> <code>context.globalStorageUri</code> gives the extension
+                a private directory that persists across sessions. The swatch cache lives in a <code>swatches</code>
+                subdirectory inside it.
+            </li>
+            <li>
+                <strong>Status bar item:</strong> A clickable indicator in the bottom bar. Setting its
+                <code>command</code> property makes it trigger the color picker when clicked.
+            </li>
+            <li>
+                <strong>Initial color application:</strong> Colors are applied immediately so the workspace
+                gets its identity as soon as the extension activates.
+            </li>
+        </ul>
+
+        <div class="callout callout-ext">
+            <div class="callout-title">VS Code Concept</div>
+            <p>
+                <code>context.subscriptions.push(statusBarItem)</code> registers the status bar item for
+                automatic cleanup. When the extension deactivates, VS Code disposes everything in the
+                subscriptions array. This prevents memory leaks and dangling UI elements. Every disposable
+                resource (status bar items, event listeners, command registrations) should be pushed here.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="helper-functions">Helper Functions</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Before looking at the commands, let&rsquo;s examine the helpers they share:
+        </p>
+
+        <pre><code class="language-typescript">function getWorkspaceName(): string | undefined {
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders && folders.length > 0) {
+        return folders[0].name;
+    }
+    return undefined;
+}
+
+function getEffectiveHue(): number {
+    const config = readConfig();
+    if (config.hueOverride !== null) {
+        return config.hueOverride;
+    }
+    const name = getWorkspaceName();
+    return name ? hashToHue(name) : 0;
+}</code></pre>
+
+        <p>
+            <code>getWorkspaceName</code> reads the first workspace folder&rsquo;s name. In a multi-root
+            workspace, it uses the first folder &mdash; a reasonable default. Returning <code>undefined</code>
+            when no workspace is open lets callers guard against that case.
+        </p>
+
+        <p>
+            <code>getEffectiveHue</code> resolves the hue, giving priority to the override. This is called
+            by the status bar updater and the color picker to show the current state.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="status-bar">The Status Bar</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">function updateStatusBar(): void {
+    const config = readConfig();
+    if (!config.enabled) {
+        statusBarItem.text = '$(circle-slash) Color Identity';
+        statusBarItem.tooltip = 'Color Identity is disabled';
+    } else {
+        const hue = getEffectiveHue();
+        const isAuto = config.hueOverride === null;
+        statusBarItem.text = `$(symbol-color) Color Identity`;
+        statusBarItem.tooltip =
+            `Hue: ${hue}° (${isAuto ? 'auto' : 'override'}) — Click to change`;
+    }
+}</code></pre>
+
+        <p>
+            The status bar provides at-a-glance information: is the extension enabled? What&rsquo;s the
+            current hue? Is it auto-derived or overridden? The <code>$(symbol-color)</code> and
+            <code>$(circle-slash)</code> are Codicon icons that give visual weight to the indicator.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="command-registration">Command Registration</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Each of the four commands declared in <code>package.json</code> gets a handler registered
+            in <code>activate</code>. Here&rsquo;s the &ldquo;choose color&rdquo; command:
+        </p>
+
+        <pre><code class="language-typescript">context.subscriptions.push(
+    vscode.commands.registerCommand('colorIdentity.chooseColor', async () =&gt; {
+        const workspaceName = getWorkspaceName();
+        if (!workspaceName) {
+            vscode.window.showWarningMessage(
+                'Color Identity: No workspace folder is open.'
+            );
+            return;
+        }
+
+        const currentHue = getEffectiveHue();
+        const themeKind = vscode.window.activeColorTheme.kind;
+        const themeProfile = getThemeProfile(themeKind);
+        const result = await showColorPicker(
+            currentHue, themeProfile, swatchDir
+        );
+        if (result === undefined) {
+            return; // dismissed
+        }
+
+        await setHueOverride(result.hue);
+        // Config change listener will auto-apply
+    })
+);</code></pre>
+
+        <p>
+            The pattern: guard against invalid state (no workspace), gather current state, show the UI,
+            and write the result. Notice the comment &ldquo;Config change listener will auto-apply&rdquo; &mdash;
+            writing the hue override triggers a configuration change event, which the extension
+            handles separately. This avoids duplicating the color application logic.
+        </p>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                This is event-driven design at work. The command doesn&rsquo;t apply colors directly &mdash;
+                it writes a setting and lets the config change listener do the rest. The benefit: every path
+                that changes a setting (the command, the Settings UI, manually editing <code>settings.json</code>)
+                triggers the same listener, so the extension always stays in sync regardless of how the
+                change was made.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="event-listeners">Event Listeners</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Two event listeners make the extension reactive:
+        </p>
+
+        <pre><code class="language-typescript">// Re-apply when the user changes their color theme
+context.subscriptions.push(
+    vscode.window.onDidChangeActiveColorTheme(() =&gt; {
+        clearSwatchCache(swatchDir); // swatches are theme-specific
+        applyIdentityColors();
+    })
+);
+
+// Re-apply when our configuration changes
+context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) =&gt; {
+        if (e.affectsConfiguration('colorIdentity')) {
+            const config = readConfig();
+            if (config.enabled) {
+                applyIdentityColors();
+            } else {
+                resetColors();
+                updateStatusBar();
+            }
+        }
+    })
+);</code></pre>
+
+        <p>
+            The <strong>theme change listener</strong> fires when the user switches between dark and light themes
+            (or any theme at all). It clears the swatch cache (because swatches encode theme-specific colors)
+            and re-applies colors with the new theme profile.
+        </p>
+
+        <p>
+            The <strong>configuration change listener</strong> fires when any setting under the
+            <code>colorIdentity</code> namespace changes. It checks whether the extension is still enabled:
+            if yes, re-apply; if no, reset all colors and update the status bar.
+        </p>
+
+        <div class="callout callout-ext">
+            <div class="callout-title">VS Code Concept</div>
+            <p>
+                <code>e.affectsConfiguration('colorIdentity')</code> is a performance guard. VS Code fires
+                the <code>onDidChangeConfiguration</code> event for <em>any</em> configuration change &mdash;
+                not just yours. Without this check, the extension would re-apply colors every time the user
+                changed their font size or any other unrelated setting.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="deactivate">The deactivate() Function</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">export function deactivate() {
+    // Nothing to clean up — colors persist in workspace settings intentionally
+}</code></pre>
+
+        <p>
+            This is a deliberate choice. When the extension deactivates (or is uninstalled), the colors
+            <em>stay</em> in the workspace&rsquo;s <code>settings.json</code>. This is the right behavior
+            because:
+        </p>
+
+        <ul>
+            <li>
+                <strong>VS Code reloads extensions frequently</strong> &mdash; window reloads, updates, etc.
+                If deactivation removed colors, the editor would flash to default colors during every reload.
+            </li>
+            <li>
+                <strong>Users can reset explicitly</strong> via the &ldquo;Reset Colors&rdquo; command if they
+                want the colors removed.
+            </li>
+            <li>
+                <strong>Workspace settings are version-controlled</strong> &mdash; if the colors are committed,
+                teammates see them too. This is a feature, not a bug, for teams that want visual differentiation
+                across their projects.
+            </li>
+        </ul>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                All six modules are now accounted for: types define the contracts, the color generator derives
+                palettes, the applier writes them to settings, the picker provides UI, the swatch generator
+                creates icons, and the extension entry point wires it all together with commands and event listeners.
+                The final section covers packaging and publishing.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section07">&larr; PNG Generation</a>
+            <a href="/projects/color-identity/tutorial/section09">Next &rarr;</a>
+        </nav>

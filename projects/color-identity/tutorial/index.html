@@ -1,0 +1,133 @@
+---
+layout: coloridentity
+title: "Building a Theme-Aware VS Code Extension"
+permalink: /projects/color-identity/tutorial/
+---
+
+        <div class="hero">
+            <h1>Building a Theme-Aware<br>VS Code Extension</h1>
+            <p class="subtitle">
+                A walkthrough for programmers learning VS Code extension development, HSL color science,
+                and zero-dependency PNG encoding &mdash; from a small, polished extension.
+            </p>
+            <div class="tech-stack">
+                <span>TypeScript</span>
+                <span>VS Code Extension API</span>
+                <span>HSL Color Space</span>
+                <span>PNG Encoding</span>
+                <span>djb2 Hashing</span>
+                <span>CRC-32</span>
+            </div>
+        </div>
+
+        <div class="arc-label">Getting Started</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/color-identity/tutorial/section00">
+                    <span class="section-num">0</span>
+                    <div class="section-info">
+                        <div class="title">Preface &amp; Orientation</div>
+                        <div class="desc">What Color Identity does, what you&rsquo;ll learn, the six-file map</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/color-identity/tutorial/section01">
+                    <span class="section-num">1</span>
+                    <div class="section-info">
+                        <div class="title">Extension Anatomy <span class="tag tag-ext">Extension</span></div>
+                        <div class="desc">package.json, activation events, commands, configuration schema</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 1 &mdash; Color Science</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/color-identity/tutorial/section02">
+                    <span class="section-num">2</span>
+                    <div class="section-info">
+                        <div class="title">Types &amp; Configuration <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">Shared interfaces, reading workspace settings, the ColorIdentityConfig contract</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/color-identity/tutorial/section03">
+                    <span class="section-num">3</span>
+                    <div class="section-info">
+                        <div class="title">Hashing Names to Colors <span class="tag tag-color">Color</span></div>
+                        <div class="desc">The djb2 hash algorithm, deterministic hue generation, and the HSL color space</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/color-identity/tutorial/section04">
+                    <span class="section-num">4</span>
+                    <div class="section-info">
+                        <div class="title">Theme-Aware Color Generation <span class="tag tag-color">Color</span></div>
+                        <div class="desc">Theme profiles, HSL-to-hex conversion, deriving a full palette from a single hue</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 2 &mdash; VS Code Integration</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/color-identity/tutorial/section05">
+                    <span class="section-num">5</span>
+                    <div class="section-info">
+                        <div class="title">Reading &amp; Writing Workspace Settings <span class="tag tag-ext">Extension</span></div>
+                        <div class="desc">workbench.colorCustomizations, merging without clobbering, clean removal</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/color-identity/tutorial/section06">
+                    <span class="section-num">6</span>
+                    <div class="section-info">
+                        <div class="title">The Color Picker UI <span class="tag tag-ext">Extension</span></div>
+                        <div class="desc">QuickPick API, named presets, live swatches, custom hue input</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/color-identity/tutorial/section07">
+                    <span class="section-num">7</span>
+                    <div class="section-info">
+                        <div class="title">PNG Swatch Generation from Scratch <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">PNG file format, DEFLATE compression, CRC-32 checksums &mdash; no image library needed</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 3 &mdash; Bringing It Together</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/color-identity/tutorial/section08">
+                    <span class="section-num">8</span>
+                    <div class="section-info">
+                        <div class="title">Extension Lifecycle &amp; Event-Driven Reactivity <span class="tag tag-ext">Extension</span></div>
+                        <div class="desc">activate/deactivate, status bar, theme change listeners, configuration watchers</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/color-identity/tutorial/section09">
+                    <span class="section-num">9</span>
+                    <div class="section-info">
+                        <div class="title">Packaging, Publishing &amp; Next Steps</div>
+                        <div class="desc">vsce, .vsix bundles, the VS Code Marketplace, and ideas for extending the extension</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="footer">
+            Built while exploring VS Code extension development with the help of Claude.<br>
+            Six TypeScript files. ~690 lines of code. Zero runtime dependencies.<br>
+            Source on GitHub: <a href="https://github.com/bojordan/ColorIdentity">bojordan/ColorIdentity</a>
+        </div>

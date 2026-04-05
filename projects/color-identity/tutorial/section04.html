@@ -1,0 +1,311 @@
+---
+layout: coloridentity
+title: "Theme-Aware Color Generation — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section04
+---
+
+        <h1><span class="section-number">4.</span> Theme-Aware Color Generation</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            Theme profiles, HSL-to-hex conversion, and deriving a full palette from a single hue.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="theme-profiles">Theme Profiles</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            VS Code reports four possible theme kinds: Dark, Light, High Contrast (dark), and High Contrast Light.
+            Color Identity defines a profile for each &mdash; a set of saturation and lightness parameters that
+            produce colors appropriate for that theme category:
+        </p>
+
+        <pre><code class="language-typescript">export function getThemeProfile(kind: vscode.ColorThemeKind): ThemeProfile {
+    switch (kind) {
+        case vscode.ColorThemeKind.Light:
+            return {
+                baseSaturation: 30,
+                baseLightness: 88,
+                fgLightness: 20,
+                inactiveLightnessShift: 4,
+            };
+        case vscode.ColorThemeKind.HighContrastLight:
+            return {
+                baseSaturation: 50,
+                baseLightness: 85,
+                fgLightness: 10,
+                inactiveLightnessShift: 5,
+            };
+        case vscode.ColorThemeKind.HighContrast:
+            return {
+                baseSaturation: 55,
+                baseLightness: 18,
+                fgLightness: 95,
+                inactiveLightnessShift: -5,
+            };
+        case vscode.ColorThemeKind.Dark:
+        default:
+            return {
+                baseSaturation: 35,
+                baseLightness: 22,
+                fgLightness: 90,
+                inactiveLightnessShift: -4,
+            };
+    }
+}</code></pre>
+
+        <p>
+            Let&rsquo;s compare the Dark and Light profiles to understand the reasoning:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Dark</th>
+                    <th>Light</th>
+                    <th>Why</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>baseSaturation</code></td>
+                    <td>35</td>
+                    <td>30</td>
+                    <td>Dark themes can handle slightly more vibrancy; light themes need subtlety to avoid looking garish.</td>
+                </tr>
+                <tr>
+                    <td><code>baseLightness</code></td>
+                    <td>22</td>
+                    <td>88</td>
+                    <td>Dark backgrounds need low lightness; light backgrounds need high lightness. These values were tuned to sit comfortably alongside each theme&rsquo;s native colors.</td>
+                </tr>
+                <tr>
+                    <td><code>fgLightness</code></td>
+                    <td>90</td>
+                    <td>20</td>
+                    <td>Foreground (text) must contrast with the background. Dark bg &rarr; light fg. Light bg &rarr; dark fg.</td>
+                </tr>
+                <tr>
+                    <td><code>inactiveLightnessShift</code></td>
+                    <td>&minus;4</td>
+                    <td>+4</td>
+                    <td>Inactive windows dim slightly. In dark themes, &ldquo;dimmer&rdquo; means darker (negative shift). In light themes, &ldquo;dimmer&rdquo; means lighter (positive shift toward white).</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout callout-color">
+            <div class="callout-title">Color Science</div>
+            <p>
+                The High Contrast profiles push saturation higher (50&ndash;55 vs. 30&ndash;35) and increase
+                the lightness shift for inactive windows. This is intentional: users who choose high contrast
+                themes need more visual differentiation, not less. The extension adapts to serve accessibility
+                preferences rather than fighting them.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="hsl-to-hex">HSL-to-Hex Conversion</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            VS Code&rsquo;s <code>workbench.colorCustomizations</code> expects <code>#rrggbb</code> hex strings.
+            We need to convert from HSL. Here&rsquo;s the implementation:
+        </p>
+
+        <pre><code class="language-typescript">/** Convert HSL to a #rrggbb hex string. s and l are percentages 0–100. */
+export function hslToHex(h: number, s: number, l: number): string {
+    s /= 100;
+    l /= 100;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n: number) =&gt; {
+        const k = (n + h / 30) % 12;
+        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * Math.max(0, Math.min(1, color)))
+            .toString(16)
+            .padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+}</code></pre>
+
+        <p>
+            This is a compact implementation of the standard HSL-to-RGB formula. Let&rsquo;s unpack it:
+        </p>
+
+        <ol>
+            <li>
+                <strong>Normalize:</strong> <code>s</code> and <code>l</code> are converted from percentages (0&ndash;100)
+                to fractions (0&ndash;1).
+            </li>
+            <li>
+                <strong>Compute chroma factor:</strong> <code>a = s * Math.min(l, 1 - l)</code>. This represents
+                the maximum displacement from gray for the given saturation and lightness. At the extremes
+                (L=0 or L=1), chroma is zero regardless of saturation &mdash; pure black and pure white have no color.
+            </li>
+            <li>
+                <strong>Channel function:</strong> The inner function <code>f(n)</code> computes one RGB channel.
+                It takes a phase offset (<code>n</code>) that shifts where on the hue cycle each channel starts.
+                Red is at phase 0, Green at phase 8, Blue at phase 4.
+            </li>
+            <li>
+                <strong>Hex encoding:</strong> Each channel is scaled to 0&ndash;255, clamped, rounded, and formatted
+                as a two-digit hex string.
+            </li>
+        </ol>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                This formula avoids the traditional six-sector <code>if/else</code> chain found in most
+                HSL-to-RGB implementations. It&rsquo;s mathematically equivalent but more elegant &mdash;
+                the modular arithmetic handles sector selection implicitly. You don&rsquo;t need to understand
+                the math deeply to use it; treat it as a well-tested utility function.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="generating-the-palette">Generating the Full Palette</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            With hashing, theme profiles, and HSL-to-hex in hand, the <code>generateColors</code> function
+            assembles the complete palette:
+        </p>
+
+        <pre><code class="language-typescript">export function generateColors(
+    workspaceName: string,
+    themeKind: vscode.ColorThemeKind,
+    config: ColorIdentityConfig
+): WorkspaceColors {
+    const hue = config.hueOverride ?? hashToHue(workspaceName);
+    const profile = getThemeProfile(themeKind);
+
+    const sat = clamp(profile.baseSaturation + config.saturationAdjustment, 0, 100);
+    const lit = clamp(profile.baseLightness + config.lightnessAdjustment, 0, 100);
+    const fgLit = profile.fgLightness;
+    const inactiveLit = clamp(lit + profile.inactiveLightnessShift, 0, 100);
+
+    const bg = hslToHex(hue, sat, lit);
+    const fg = hslToHex(hue, Math.max(sat - 15, 0), fgLit);
+    const inactiveBg = hslToHex(hue, Math.max(sat - 10, 0), inactiveLit);
+    const inactiveFg = hslToHex(hue, Math.max(sat - 20, 0),
+                                clamp(fgLit - 20, 0, 100));
+    const accentBorder = hslToHex(hue, clamp(sat + 15, 0, 100),
+                                  clamp(lit + 10, 0, 100));</code></pre>
+
+        <p>
+            Step by step:
+        </p>
+
+        <ol>
+            <li>
+                <strong>Resolve the hue:</strong> Use the override if set; otherwise hash the workspace name.
+                The <code>??</code> (nullish coalescing) operator makes this clean.
+            </li>
+            <li>
+                <strong>Get the theme profile:</strong> Four numbers that encode the visual rules for this theme kind.
+            </li>
+            <li>
+                <strong>Apply user adjustments:</strong> The user&rsquo;s saturation and lightness adjustments
+                are added to the profile&rsquo;s base values, then clamped to valid ranges.
+            </li>
+            <li>
+                <strong>Derive five colors:</strong> All from the same hue, with varying saturation and lightness:
+                <ul>
+                    <li><strong>bg</strong> &mdash; the main background color</li>
+                    <li><strong>fg</strong> &mdash; foreground text (lower saturation for readability)</li>
+                    <li><strong>inactiveBg</strong> &mdash; background when the window isn&rsquo;t focused</li>
+                    <li><strong>inactiveFg</strong> &mdash; dimmed foreground for inactive state</li>
+                    <li><strong>accentBorder</strong> &mdash; brighter accent for active indicators</li>
+                </ul>
+            </li>
+        </ol>
+
+        <div class="callout callout-color">
+            <div class="callout-title">Color Science</div>
+            <p>
+                Notice how every derived color reduces saturation from the base: foreground is <code>sat&nbsp;-&nbsp;15</code>,
+                inactive background is <code>sat&nbsp;-&nbsp;10</code>, inactive foreground is <code>sat&nbsp;-&nbsp;20</code>.
+                This is deliberate &mdash; text and inactive states should be less vivid than the background.
+                Only the accent border <em>increases</em> saturation, because its job is to draw attention.
+            </p>
+        </div>
+
+        <p>
+            The function continues with status bar and tab bar variations:
+        </p>
+
+        <pre><code class="language-typescript">    // Status bar gets a slightly different lightness for visual separation
+    const statusLit = clamp(lit - 3, 0, 100);
+    const statusBg = hslToHex(hue, sat, statusLit);
+
+    // Tab bar uses a very subtle tint
+    const tabLit = themeKind === vscode.ColorThemeKind.Dark ||
+                   themeKind === vscode.ColorThemeKind.HighContrast
+        ? clamp(lit + 3, 0, 100)
+        : clamp(lit - 2, 0, 100);
+    const tabBg = hslToHex(hue, Math.max(sat - 10, 0), tabLit);</code></pre>
+
+        <p>
+            The status bar is 3 lightness points darker than the title bar, giving it visual separation
+            without a harsh boundary. The tab bar goes the opposite direction from the status bar &mdash;
+            slightly lighter in dark themes, slightly darker in light themes &mdash; creating a gentle
+            gradient effect across the editor chrome.
+        </p>
+
+        <p>
+            Finally, the function assembles the <code>WorkspaceColors</code> object, respecting which
+            elements the user wants colorized:
+        </p>
+
+        <pre><code class="language-typescript">    const colors: WorkspaceColors = {};
+
+    if (config.affectTitleBar) {
+        colors.titleBarActiveBackground = bg;
+        colors.titleBarActiveForeground = fg;
+        colors.titleBarInactiveBackground = inactiveBg;
+        colors.titleBarInactiveForeground = inactiveFg;
+    }
+
+    if (config.affectActivityBar) {
+        colors.activityBarBackground = bg;
+        colors.activityBarForeground = fg;
+        colors.activityBarActiveBorder = accentBorder;
+    }
+
+    if (config.affectStatusBar) {
+        colors.statusBarBackground = statusBg;
+        colors.statusBarForeground = fg;
+    }
+
+    if (config.affectTabBar) {
+        colors.tabsBackground = tabBg;
+    }
+
+    return colors;
+}</code></pre>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                The <code>generateColors</code> function is <em>pure</em> &mdash; it takes inputs and returns
+                a value, with no side effects. It doesn&rsquo;t read settings (that&rsquo;s <code>readConfig</code>&rsquo;s
+                job), doesn&rsquo;t write to VS Code (that&rsquo;s <code>applyColors</code>&rsquo;s job), and
+                doesn&rsquo;t touch the UI. This makes it easy to test and easy to reason about.
+            </p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                The color pipeline is now complete: workspace name &rarr; djb2 hash &rarr; hue &rarr;
+                theme profile + user adjustments &rarr; five HSL colors &rarr; hex strings &rarr;
+                <code>WorkspaceColors</code> object. Next, we&rsquo;ll see how those hex strings get
+                written into VS Code&rsquo;s workspace settings.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section03">&larr; Hashing Names to Colors</a>
+            <a href="/projects/color-identity/tutorial/section05">Next &rarr;</a>
+        </nav>

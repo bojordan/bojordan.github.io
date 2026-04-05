@@ -1,0 +1,194 @@
+---
+layout: coloridentity
+title: "The Color Picker UI — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section06
+---
+
+        <h1><span class="section-number">6.</span> The Color Picker UI</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            Building a QuickPick with named presets, live swatches, and custom hue input.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-quickpick-api">The QuickPick API</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            VS Code&rsquo;s <code>showQuickPick</code> is the standard way to present a list of choices
+            to the user. It&rsquo;s the same widget behind the Command Palette, file switcher, and
+            symbol search. For Color Identity, it becomes a color picker with 14 named presets,
+            an &ldquo;automatic&rdquo; option, and a custom hue entry.
+        </p>
+
+        <p>
+            The function signature tells the story:
+        </p>
+
+        <pre><code class="language-typescript">export async function showColorPicker(
+    currentHue: number,
+    themeProfile: ThemeProfile,
+    swatchDir: string
+): Promise&lt;{ hue: number | null } | undefined&gt;</code></pre>
+
+        <p>
+            Three possible return values:
+        </p>
+
+        <ul>
+            <li><code>{ hue: 220 }</code> &mdash; user picked a specific hue (preset or custom).</li>
+            <li><code>{ hue: null }</code> &mdash; user picked &ldquo;Automatic&rdquo; (use the hash-based hue).</li>
+            <li><code>undefined</code> &mdash; user dismissed the picker without choosing.</li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <h2 id="color-presets">Color Presets</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">export const COLOR_PRESETS: ColorPreset[] = [
+    { label: 'Red',         hue: 0   },
+    { label: 'Orange',      hue: 30  },
+    { label: 'Yellow',      hue: 55  },
+    { label: 'Lime',        hue: 80  },
+    { label: 'Green',       hue: 120 },
+    { label: 'Mint',        hue: 150 },
+    { label: 'Teal',        hue: 175 },
+    { label: 'Cyan',        hue: 190 },
+    { label: 'Blue',        hue: 220 },
+    { label: 'Indigo',      hue: 245 },
+    { label: 'Purple',      hue: 270 },
+    { label: 'Magenta',     hue: 300 },
+    { label: 'Pink',        hue: 330 },
+    { label: 'Rose',        hue: 350 },
+];</code></pre>
+
+        <p>
+            Fourteen presets spaced around the color wheel. The spacing isn&rsquo;t uniform &mdash; there
+            are more entries in the warm range (Red through Yellow, 0&ndash;55&deg;) and the cool range
+            (Teal through Indigo, 175&ndash;245&deg;) because those regions contain more perceptually
+            distinct colors. The gap between Green (120&deg;) and Mint (150&deg;) is wider because
+            that region of the wheel has less visual variety.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="building-the-picker">Building the Picker Items</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Each preset becomes a <code>QuickPickItem</code> with an icon, description, and optional
+            &ldquo;currently selected&rdquo; indicator:
+        </p>
+
+        <pre><code class="language-typescript">for (const preset of COLOR_PRESETS) {
+    const previewHex = hslToHex(
+        preset.hue,
+        themeProfile.baseSaturation,
+        themeProfile.baseLightness
+    );
+    const swatchUri = generateColorSwatch(swatchDir, previewHex);
+
+    items.push({
+        label: preset.label,
+        description: `hue ${preset.hue}°  ·  ${previewHex}`,
+        detail: currentHue === preset.hue
+            ? '$(check) Currently selected' : undefined,
+        iconPath: swatchUri,
+        _hue: preset.hue,
+    });
+}</code></pre>
+
+        <p>
+            Several things happening here:
+        </p>
+
+        <ul>
+            <li>
+                <strong>Theme-aware previews:</strong> The swatch color uses the current theme&rsquo;s
+                saturation and lightness, so the preview shows what the color will actually look like
+                in your editor &mdash; not a generic color swatch.
+            </li>
+            <li>
+                <strong>PNG swatch icons:</strong> <code>generateColorSwatch</code> creates a 16&times;16
+                solid-color PNG file and returns its URI. QuickPick items support <code>iconPath</code>
+                for displaying small images. We&rsquo;ll see how these PNGs are generated in Section 7.
+            </li>
+            <li>
+                <strong>Selection indicator:</strong> The <code>$(check)</code> syntax is a VS Code
+                <a href="https://code.visualstudio.com/api/references/icons-in-labels">Codicon</a> &mdash;
+                a built-in icon set. It renders as a checkmark in the detail line.
+            </li>
+            <li>
+                <strong>Custom property:</strong> <code>_hue</code> is a custom property added via
+                a type intersection. It piggybacks the hue value on the QuickPick item so we can
+                retrieve it when the user makes a selection.
+            </li>
+        </ul>
+
+        <div class="callout callout-ext">
+            <div class="callout-title">VS Code Concept</div>
+            <p>
+                <code>QuickPickItem</code> supports <code>label</code>, <code>description</code> (shown
+                to the right of the label, muted), and <code>detail</code> (shown below the label, smaller).
+                The <code>kind</code> property can be set to <code>QuickPickItemKind.Separator</code> to
+                add visual dividers between groups of items. Color Identity uses separators to set apart
+                the &ldquo;Automatic&rdquo; option, the color presets, and the &ldquo;Custom Hue&rdquo; option.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="custom-hue-input">Custom Hue Input</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            If the user picks &ldquo;Custom Hue&hellip;&rdquo;, the flow chains into an input box:
+        </p>
+
+        <pre><code class="language-typescript">if ((picked as PickItem)._action === 'custom') {
+    const input = await vscode.window.showInputBox({
+        title: 'Color Identity: Custom Hue',
+        prompt: 'Enter a hue value (0 = red, 120 = green, 240 = blue)',
+        value: String(currentHue),
+        validateInput: (value) =&gt; {
+            const n = Number(value);
+            if (isNaN(n) || n &lt; 0 || n &gt; 360) {
+                return 'Please enter a number between 0 and 360';
+            }
+            return undefined;
+        },
+    });
+    if (input === undefined) {
+        return undefined;
+    }
+    return { hue: Number(input) };
+}</code></pre>
+
+        <p>
+            The <code>validateInput</code> callback runs on every keystroke and shows an inline error
+            message if the input is invalid. The user can&rsquo;t submit an invalid value &mdash; the
+            OK button is disabled while the validation message is visible. The <code>value</code> field
+            pre-populates the input with the current hue, so the user can adjust from their current
+            position rather than starting from scratch.
+        </p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                Notice the flow: QuickPick &rarr; InputBox is a two-step interaction. The user first
+                picks from a list, and only sees the text input if they explicitly choose the custom option.
+                This keeps the common case (picking a preset) fast, while still supporting power users
+                who want precise control.
+            </p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                The color picker is a complete UI component: 14 theme-aware presets with swatch icons,
+                an automatic option, and a validated custom input. But where do those swatch PNG files
+                come from? That&rsquo;s the most surprising part of the whole extension.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section05">&larr; Workspace Settings</a>
+            <a href="/projects/color-identity/tutorial/section07">Next &rarr;</a>
+        </nav>

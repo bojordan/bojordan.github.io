@@ -1,0 +1,206 @@
+---
+layout: coloridentity
+title: "Preface & Orientation — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section00
+---
+
+        <h1><span class="section-number">0.</span> Preface &amp; Orientation</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            What Color Identity does, what you&rsquo;ll learn, and how this tutorial is organized.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="what-youll-build">What You&rsquo;ll Build</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <a href="https://github.com/bojordan/ColorIdentity">Color Identity</a> is a VS Code extension that
+            automatically gives each workspace a unique, harmonious color identity. Open three projects side by side
+            and you can tell them apart at a glance &mdash; the title bar, activity bar, and status bar each carry a
+            tint derived from the workspace&rsquo;s folder name.
+        </p>
+
+        <p>
+            Unlike extensions that let you pick arbitrary colors, Color Identity <em>derives</em> its palette from
+            two inputs: a deterministic hash of your folder name (so the same project always gets the same hue) and
+            your active color theme (so dark themes get dark tints, light themes get light tints, and the colors never
+            clash with the rest of your editor).
+        </p>
+
+        <div class="diagram">
+ Workspace folder name         Active color theme         Color Identity
+┌─────────────────────┐       ┌─────────────────┐       ┌────────────────────────────────┐
+│  "my-project"       │──────▶│  <em>djb2 hash</em>      │──────▶│  hue = 217&deg;                    │
+└─────────────────────┘       └─────────────────┘       │                                │
+                                                        │  + <em>theme profile</em> (dark/light)  │
+                              ┌─────────────────┐       │  &darr;                             │
+                              │  Dark / Light / │──────▶│  saturation, lightness derived │
+                              │  High Contrast  │       │  &darr;                             │
+                              └─────────────────┘       │  title bar, activity bar,      │
+                                                        │  status bar, tab bar           │
+                                                        └────────────────────────────────┘
+        </div>
+
+        <p>
+            The extension is small &mdash; six TypeScript files, around 690 lines of code total, with
+            <strong>zero runtime dependencies</strong>. But it covers a surprising range of topics:
+            VS Code extension APIs, HSL color theory, deterministic hashing, PNG file encoding from scratch,
+            event-driven reactivity, and workspace settings management. That&rsquo;s what this tutorial is about.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="what-youll-learn">What You&rsquo;ll Learn</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            This tutorial teaches three subjects in parallel:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th><span class="tag tag-ext">Extension</span> VS Code API</th>
+                    <th><span class="tag tag-color">Color</span> Color Science</th>
+                    <th><span class="tag tag-arch">Arch</span> Architecture</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>package.json manifest</strong> &mdash; Declaring commands, configuration, and activation events.</td>
+                    <td><strong>HSL color space</strong> &mdash; Why hue/saturation/lightness is the right model for theme-aware color generation.</td>
+                    <td><strong>Shared types</strong> &mdash; Defining interfaces that keep six files in sync without circular dependencies.</td>
+                </tr>
+                <tr>
+                    <td><strong>QuickPick API</strong> &mdash; Building a picker with icons, separators, and custom input flow.</td>
+                    <td><strong>djb2 hashing</strong> &mdash; A classic string hash that maps workspace names to hues deterministically.</td>
+                    <td><strong>Settings merging</strong> &mdash; Writing to workspace config without clobbering other extensions.</td>
+                </tr>
+                <tr>
+                    <td><strong>Event listeners</strong> &mdash; Reacting to theme changes and configuration changes.</td>
+                    <td><strong>HSL-to-hex conversion</strong> &mdash; The math that turns color theory into <code>#rrggbb</code> strings.</td>
+                    <td><strong>PNG encoding</strong> &mdash; Building a valid PNG from raw pixels using only Node&rsquo;s <code>zlib</code>.</td>
+                </tr>
+                <tr>
+                    <td><strong>Status bar items</strong> &mdash; Adding interactive indicators to the VS Code chrome.</td>
+                    <td><strong>Theme profiles</strong> &mdash; Deriving saturation and lightness ranges from the active theme kind.</td>
+                    <td><strong>CRC-32 checksums</strong> &mdash; The integrity mechanism every PNG chunk requires.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ============================================================ -->
+        <h2 id="prerequisites">Prerequisites</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            You need:
+        </p>
+
+        <ul>
+            <li>
+                <strong>VS Code</strong> (version 1.85 or later). This is both your development environment and
+                your test bed &mdash; the extension runs inside a second VS Code window launched by the debugger.
+            </li>
+            <li>
+                <strong>Node.js 18+</strong> and <strong>npm</strong>. Used for TypeScript compilation and dependency management.
+            </li>
+            <li>
+                <strong>Programming experience in any language.</strong> The tutorial assumes you can read TypeScript
+                (or JavaScript with types), understand interfaces and closures, and follow async/await patterns.
+                No prior VS Code extension experience is required.
+            </li>
+        </ul>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                If you&rsquo;ve never written a VS Code extension before, this tutorial starts from scratch
+                and explains every API as it appears. You <em>don&rsquo;t</em> need to run through
+                Microsoft&rsquo;s &ldquo;Your First Extension&rdquo; guide first, though it won&rsquo;t hurt.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="how-this-tutorial-is-organized">How This Tutorial Is Organized</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Sections are tagged with one of three labels:
+        </p>
+
+        <ul>
+            <li><span class="tag tag-ext">Extension</span> <strong>Blue sections</strong> teach VS Code extension APIs and platform concepts.</li>
+            <li><span class="tag tag-color">Color</span> <strong>Green sections</strong> cover color science, hashing, and visual math.</li>
+            <li><span class="tag tag-arch">Arch</span> <strong>Purple sections</strong> discuss architecture decisions, data formats, and design patterns.</li>
+        </ul>
+
+        <p>
+            Like the other tutorials on this site, this one <em>explains an existing project</em> rather than
+            having you type code line by line. Every section walks through real code from the Color Identity source,
+            explains each decision, and highlights the tradeoffs. You&rsquo;re encouraged to have the
+            source open in VS Code alongside these pages.
+        </p>
+
+        <h3 id="the-six-source-files">The Six Source Files</h3>
+
+        <p>
+            The entire extension lives in six TypeScript files. Here&rsquo;s the map:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Lines</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>extension.ts</code></td>
+                    <td>172</td>
+                    <td>Entry point. Registers commands, creates the status bar, wires up event listeners, orchestrates color application.</td>
+                </tr>
+                <tr>
+                    <td><code>colorGenerator.ts</code></td>
+                    <td>137</td>
+                    <td>The color engine. Hashes workspace names to hues, defines theme profiles, converts HSL to hex, generates the full palette.</td>
+                </tr>
+                <tr>
+                    <td><code>colorApplier.ts</code></td>
+                    <td>86</td>
+                    <td>Settings integration. Reads and writes <code>workbench.colorCustomizations</code> without clobbering other extensions.</td>
+                </tr>
+                <tr>
+                    <td><code>colorPicker.ts</code></td>
+                    <td>109</td>
+                    <td>The color picker UI. A QuickPick with 14 named presets, live swatches, and custom hue input.</td>
+                </tr>
+                <tr>
+                    <td><code>swatchGenerator.ts</code></td>
+                    <td>129</td>
+                    <td>PNG encoder. Generates solid-color swatch images at runtime using raw PNG encoding &mdash; no image library.</td>
+                </tr>
+                <tr>
+                    <td><code>types.ts</code></td>
+                    <td>57</td>
+                    <td>Shared interfaces and the config reader. Defines the contracts that keep the other five files decoupled.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                Notice the zero-dependency design. The extension uses only Node.js built-ins (<code>path</code>,
+                <code>fs</code>, <code>zlib</code>) and the VS Code API. No color libraries, no image libraries,
+                no utility packages. Everything is implemented from first principles. This makes the extension
+                fast to activate, trivial to audit, and immune to supply-chain concerns. It also makes it a
+                much more interesting thing to study.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/">&larr; Table of Contents</a>
+            <a href="/projects/color-identity/tutorial/section01">Next &rarr;</a>
+        </nav>

@@ -1,0 +1,214 @@
+---
+layout: coloridentity
+title: "Types & Configuration — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section02
+---
+
+        <h1><span class="section-number">2.</span> Types &amp; Configuration</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            Shared interfaces and the configuration reader that keep the extension&rsquo;s modules decoupled.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="why-a-types-file">Why a Types File?</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Color Identity has six source files. Without a shared vocabulary, they&rsquo;d either import from each
+            other in a tangled web or repeat type definitions. <code>types.ts</code> solves this by defining every
+            interface and the config reader in one place. Every other module imports from here; none of them
+            import from each other except through explicit function calls.
+        </p>
+
+        <p>
+            Let&rsquo;s walk through each interface.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="hsl-interface">The HSL Interface</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">/** HSL color with values: h ∈ [0,360), s ∈ [0,100], l ∈ [0,100] */
+export interface HSL {
+    h: number;
+    s: number;
+    l: number;
+}</code></pre>
+
+        <p>
+            This is the extension&rsquo;s internal color representation. HSL (Hue, Saturation, Lightness) is the
+            natural choice for this project because each component maps to a meaningful axis of control:
+        </p>
+
+        <ul>
+            <li><strong>Hue</strong> (0&ndash;360) is the color wheel position &mdash; this is the workspace&rsquo;s identity.</li>
+            <li><strong>Saturation</strong> (0&ndash;100) controls vibrancy &mdash; this adapts to the theme.</li>
+            <li><strong>Lightness</strong> (0&ndash;100) controls brightness &mdash; this also adapts to the theme.</li>
+        </ul>
+
+        <div class="callout callout-color">
+            <div class="callout-title">Color Science</div>
+            <p>
+                The comment documents the value ranges using interval notation: <code>h &isin; [0,360)</code> means
+                hue goes from 0 (inclusive) to 360 (exclusive). This matters because hue 0 and hue 360 are the
+                same color (red), so the valid range wraps around. Saturation and lightness are simple percentages.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="theme-profile">The ThemeProfile Interface</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">/** Theme profile: saturation and lightness ranges appropriate for a theme kind */
+export interface ThemeProfile {
+    baseSaturation: number;
+    baseLightness: number;
+    fgLightness: number;
+    inactiveLightnessShift: number;
+}</code></pre>
+
+        <p>
+            A <code>ThemeProfile</code> encodes the visual rules for one of VS Code&rsquo;s four theme categories.
+            Each field answers a specific question:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Question it answers</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>baseSaturation</code></td>
+                    <td>How vivid should the background tint be?</td>
+                </tr>
+                <tr>
+                    <td><code>baseLightness</code></td>
+                    <td>How bright should the background be?</td>
+                </tr>
+                <tr>
+                    <td><code>fgLightness</code></td>
+                    <td>How bright should the foreground text be?</td>
+                </tr>
+                <tr>
+                    <td><code>inactiveLightnessShift</code></td>
+                    <td>How much should inactive windows dim (or brighten)?</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            We&rsquo;ll see how these profiles are defined in Section 4. The key insight is that the same
+            hue &mdash; say, 220&deg; (blue) &mdash; needs very different saturation and lightness values
+            depending on whether it&rsquo;s sitting in a dark theme or a light theme.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="workspace-colors">The WorkspaceColors Interface</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">/** Resolved set of hex colors to apply to the workspace */
+export interface WorkspaceColors {
+    titleBarActiveBackground?: string;
+    titleBarActiveForeground?: string;
+    titleBarInactiveBackground?: string;
+    titleBarInactiveForeground?: string;
+    activityBarBackground?: string;
+    activityBarForeground?: string;
+    activityBarActiveBorder?: string;
+    statusBarBackground?: string;
+    statusBarForeground?: string;
+    tabsBackground?: string;
+}</code></pre>
+
+        <p>
+            Every field is optional (<code>?</code>) because the user controls which UI elements get colorized.
+            If <code>affectTitleBar</code> is <code>false</code>, the four <code>titleBar*</code> fields stay
+            <code>undefined</code> and are never written to settings. This is how the extension respects the
+            user&rsquo;s preferences without complex conditional logic &mdash; the type system encodes it.
+        </p>
+
+        <div class="callout callout-ext">
+            <div class="callout-title">VS Code Concept</div>
+            <p>
+                These property names are camelCase versions of VS Code&rsquo;s dotted key names. For example,
+                <code>titleBarActiveBackground</code> maps to <code>titleBar.activeBackground</code> in
+                <code>workbench.colorCustomizations</code>. The mapping is handled by <code>colorApplier.ts</code>
+                (Section 5). Using camelCase internally makes the TypeScript cleaner; the translation happens
+                at the boundary.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="config-interface">The ColorIdentityConfig Interface</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">/** Configuration read from user settings */
+export interface ColorIdentityConfig {
+    enabled: boolean;
+    affectTitleBar: boolean;
+    affectActivityBar: boolean;
+    affectStatusBar: boolean;
+    affectTabBar: boolean;
+    saturationAdjustment: number;
+    lightnessAdjustment: number;
+    hueOverride: number | null;
+}</code></pre>
+
+        <p>
+            This is a 1:1 mirror of the <code>package.json</code> configuration schema from Section 1. Every
+            setting the user can change has a typed field here. The <code>hueOverride</code> field uses
+            <code>number | null</code> &mdash; <code>null</code> means &ldquo;use the automatic hash-based hue,&rdquo;
+            while a number means &ldquo;use this specific hue.&rdquo;
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="reading-config">Reading Configuration</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">export function readConfig(): ColorIdentityConfig {
+    const cfg = vscode.workspace.getConfiguration('colorIdentity');
+    return {
+        enabled: cfg.get&lt;boolean&gt;('enabled', true),
+        affectTitleBar: cfg.get&lt;boolean&gt;('affectTitleBar', true),
+        affectActivityBar: cfg.get&lt;boolean&gt;('affectActivityBar', true),
+        affectStatusBar: cfg.get&lt;boolean&gt;('affectStatusBar', true),
+        affectTabBar: cfg.get&lt;boolean&gt;('affectTabBar', false),
+        saturationAdjustment: cfg.get&lt;number&gt;('saturationAdjustment', 0),
+        lightnessAdjustment: cfg.get&lt;number&gt;('lightnessAdjustment', 0),
+        hueOverride: cfg.get&lt;number | null&gt;('hueOverride', null),
+    };
+}</code></pre>
+
+        <p>
+            <code>vscode.workspace.getConfiguration('colorIdentity')</code> returns a scoped config reader.
+            Each <code>cfg.get()</code> call reads one setting and provides a default if it&rsquo;s not set.
+            The defaults here <em>must</em> match the defaults declared in <code>package.json</code> &mdash;
+            they&rsquo;re the fallback for when the user hasn&rsquo;t touched settings.
+        </p>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                By centralizing config reading in one function, every module that needs settings calls
+                <code>readConfig()</code> and gets back a strongly-typed object. No one else touches
+                <code>vscode.workspace.getConfiguration()</code> directly. This means if the config shape
+                changes, there&rsquo;s exactly one place to update.
+            </p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                You&rsquo;ve seen the data contracts that hold the extension together: four interfaces and one
+                config reader, all in 57 lines. Next, we&rsquo;ll see how the color generator uses these types
+                to turn a workspace name into a deterministic hue.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section01">&larr; Extension Anatomy</a>
+            <a href="/projects/color-identity/tutorial/section03">Next &rarr;</a>
+        </nav>

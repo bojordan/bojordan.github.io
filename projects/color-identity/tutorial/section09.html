@@ -1,0 +1,225 @@
+---
+layout: coloridentity
+title: "Packaging, Publishing & Next Steps — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section09
+---
+
+        <h1><span class="section-number">9.</span> Packaging, Publishing &amp; Next Steps</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            How to bundle, distribute, and extend the extension.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="packaging-with-vsce">Packaging with vsce</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            <code>vsce</code> (Visual Studio Code Extensions) is the official CLI for packaging and publishing
+            VS Code extensions. Install it globally:
+        </p>
+
+        <pre><code class="language-bash">npm install -g @vscode/vsce</code></pre>
+
+        <p>
+            Then package the extension into a <code>.vsix</code> file:
+        </p>
+
+        <pre><code class="language-bash">vsce package</code></pre>
+
+        <p>
+            This runs <code>vscode:prepublish</code> (which compiles the TypeScript), bundles the compiled
+            JavaScript, <code>package.json</code>, and any other included files into a single
+            <code>.vsix</code> archive. The result is something like <code>color-identity-0.1.0.vsix</code>.
+        </p>
+
+        <p>
+            You can install the <code>.vsix</code> locally:
+        </p>
+
+        <pre><code class="language-bash">code --install-extension color-identity-0.1.0.vsix</code></pre>
+
+        <p>
+            Or share it with others by sending them the file. No Marketplace account needed for local distribution.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="vscodeignore">Controlling What Gets Bundled</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            A <code>.vscodeignore</code> file (similar to <code>.gitignore</code>) controls what&rsquo;s
+            excluded from the <code>.vsix</code> bundle. You typically exclude source files, test files,
+            and development configuration:
+        </p>
+
+        <pre><code class="language-bash">.vscode/**
+src/**
+node_modules/**
+.gitignore
+tsconfig.json
+**/*.ts
+**/*.map</code></pre>
+
+        <p>
+            The compiled <code>out/</code> directory and <code>package.json</code> are always included.
+            The goal is a minimal bundle: users don&rsquo;t need your TypeScript source or development
+            tooling.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="publishing">Publishing to the Marketplace</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            To publish to the VS Code Marketplace:
+        </p>
+
+        <ol>
+            <li>
+                <strong>Create a publisher:</strong> Sign in at
+                <a href="https://marketplace.visualstudio.com/manage">marketplace.visualstudio.com/manage</a>
+                with a Microsoft or GitHub account and create a publisher ID.
+            </li>
+            <li>
+                <strong>Create a Personal Access Token (PAT):</strong> In Azure DevOps, create a token
+                with the <code>Marketplace (Manage)</code> scope. This authenticates <code>vsce</code>
+                for publishing.
+            </li>
+            <li>
+                <strong>Login and publish:</strong>
+                <pre><code class="language-bash">vsce login your-publisher-id
+vsce publish</code></pre>
+            </li>
+        </ol>
+
+        <p>
+            After publishing, the extension appears in the Marketplace and can be installed by anyone
+            searching for it in VS Code&rsquo;s Extensions view.
+        </p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                You can also publish pre-release versions with <code>vsce publish --pre-release</code>.
+                Pre-release versions are shown separately in the Marketplace and let you test with early
+                adopters before promoting to a stable release.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="what-we-built">What We Built</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Let&rsquo;s take stock of what Color Identity covers in 690 lines:
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Concept</th>
+                    <th>Where</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Extension manifest and activation</td>
+                    <td><code>package.json</code>, Section 1</td>
+                </tr>
+                <tr>
+                    <td>Shared type contracts</td>
+                    <td><code>types.ts</code>, Section 2</td>
+                </tr>
+                <tr>
+                    <td>Deterministic string hashing (djb2)</td>
+                    <td><code>colorGenerator.ts</code>, Section 3</td>
+                </tr>
+                <tr>
+                    <td>HSL color space and theme-aware generation</td>
+                    <td><code>colorGenerator.ts</code>, Section 4</td>
+                </tr>
+                <tr>
+                    <td>Safe workspace settings merging</td>
+                    <td><code>colorApplier.ts</code>, Section 5</td>
+                </tr>
+                <tr>
+                    <td>QuickPick UI with icons and input flow</td>
+                    <td><code>colorPicker.ts</code>, Section 6</td>
+                </tr>
+                <tr>
+                    <td>PNG encoding, DEFLATE, CRC-32</td>
+                    <td><code>swatchGenerator.ts</code>, Section 7</td>
+                </tr>
+                <tr>
+                    <td>Event-driven lifecycle and reactivity</td>
+                    <td><code>extension.ts</code>, Section 8</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ============================================================ -->
+        <h2 id="ideas-for-extending">Ideas for Extending</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            If you want to push further, here are some ideas:
+        </p>
+
+        <ul>
+            <li>
+                <strong>Git branch colors:</strong> Derive the hue from the active branch name instead of
+                (or in addition to) the workspace name. Feature branches get a different tint than main.
+            </li>
+            <li>
+                <strong>Color history:</strong> Remember the last N hues the user picked and offer them as
+                &ldquo;recent&rdquo; options in the picker.
+            </li>
+            <li>
+                <strong>Multi-root awareness:</strong> In a multi-root workspace, derive a color from the
+                <em>combined</em> folder names, or let the user assign colors per root folder.
+            </li>
+            <li>
+                <strong>Remote indicator:</strong> When connected to a remote host (SSH, WSL, Dev Container),
+                apply a visually distinct tint to signal that you&rsquo;re not working locally.
+            </li>
+            <li>
+                <strong>Animated transitions:</strong> Fade between colors when switching themes instead
+                of an instant change. VS Code doesn&rsquo;t natively support color transitions, but you
+                could approximate it by rapidly updating colors through intermediate HSL values.
+            </li>
+        </ul>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                The extension&rsquo;s modular design makes all of these additions straightforward.
+                Git branch colors would change <code>getEffectiveHue</code>. Color history would add
+                a storage layer and modify the picker. Multi-root awareness would change
+                <code>getWorkspaceName</code>. None of these require restructuring the existing code &mdash;
+                each module has a clear responsibility and a clean interface.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="closing-thoughts">Closing Thoughts</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Color Identity started as a simple question: &ldquo;Can I tell my VS Code windows apart
+            at a glance?&rdquo; The answer turned out to involve more interesting computer science than
+            expected &mdash; hashing algorithms, color theory, binary file formats, and event-driven
+            architecture, all packed into six files with zero dependencies.
+        </p>
+
+        <p>
+            The zero-dependency constraint wasn&rsquo;t an ideology &mdash; it was the natural outcome of
+            the problem being small enough that every component could be built from first principles in
+            less code than it would take to configure a library. That&rsquo;s a good heuristic for
+            dependency decisions in general: if you can build it in fewer lines than the <code>import</code>
+            statement plus configuration, just build it.
+        </p>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section08">&larr; Extension Lifecycle</a>
+            <a href="/projects/color-identity/tutorial/">Table of Contents &rarr;</a>
+        </nav>

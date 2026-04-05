@@ -1,0 +1,204 @@
+---
+layout: coloridentity
+title: "Reading & Writing Workspace Settings — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section05
+---
+
+        <h1><span class="section-number">5.</span> Reading &amp; Writing Workspace Settings</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            How to merge colors into <code>workbench.colorCustomizations</code> without clobbering other extensions.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-problem">The Problem</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            VS Code stores workspace-level UI colors in a single JSON object at
+            <code>workbench.colorCustomizations</code> inside <code>.vscode/settings.json</code>.
+            Multiple extensions (and the user) might be writing to this same object. If Color Identity
+            naively overwrites the entire object, it destroys other extensions&rsquo; customizations.
+            If it only adds its own keys, it needs a way to <em>cleanly remove</em> them later.
+        </p>
+
+        <p>
+            <code>colorApplier.ts</code> solves both problems with a <strong>managed keys</strong> pattern.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="managed-keys">Managed Keys</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">const MANAGED_KEYS: readonly (keyof WorkspaceColors)[] = [
+    'titleBarActiveBackground',
+    'titleBarActiveForeground',
+    'titleBarInactiveBackground',
+    'titleBarInactiveForeground',
+    'activityBarBackground',
+    'activityBarForeground',
+    'activityBarActiveBorder',
+    'statusBarBackground',
+    'statusBarForeground',
+    'tabsBackground',
+];</code></pre>
+
+        <p>
+            This array is the extension&rsquo;s claim: &ldquo;These are the keys I manage. I will add them,
+            update them, and remove them. I will not touch anything else.&rdquo; The type annotation
+            <code>(keyof WorkspaceColors)[]</code> ensures this list stays in sync with the
+            <code>WorkspaceColors</code> interface from <code>types.ts</code> &mdash; if a field is added
+            or removed from the interface, TypeScript catches the inconsistency.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="key-mapping">Key Mapping</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">const KEY_MAP: Record&lt;keyof WorkspaceColors, string&gt; = {
+    titleBarActiveBackground: 'titleBar.activeBackground',
+    titleBarActiveForeground: 'titleBar.activeForeground',
+    titleBarInactiveBackground: 'titleBar.inactiveBackground',
+    titleBarInactiveForeground: 'titleBar.inactiveForeground',
+    activityBarBackground: 'activityBar.background',
+    activityBarForeground: 'activityBar.foreground',
+    activityBarActiveBorder: 'activityBar.activeBorder',
+    statusBarBackground: 'statusBar.background',
+    statusBarForeground: 'statusBar.foreground',
+    tabsBackground: 'editorGroupHeader.tabsBackground',
+};</code></pre>
+
+        <p>
+            VS Code uses dotted key names like <code>titleBar.activeBackground</code> in its configuration.
+            TypeScript property names can&rsquo;t contain dots, so the extension uses camelCase internally.
+            This map translates between the two worlds. It exists in one place, used by both
+            <code>applyColors</code> and <code>resetColors</code>.
+        </p>
+
+        <div class="callout callout-ext">
+            <div class="callout-title">VS Code Concept</div>
+            <p>
+                The key <code>editorGroupHeader.tabsBackground</code> is worth noting &mdash; it&rsquo;s not
+                <code>tabBar.background</code> as you might expect. VS Code&rsquo;s color key naming follows
+                its internal component hierarchy, which doesn&rsquo;t always match the user-facing terminology.
+                When building an extension that writes color customizations, you need to consult the
+                <a href="https://code.visualstudio.com/api/references/theme-color">Theme Color Reference</a>
+                for the exact key names.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="applying-colors">Applying Colors</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">export async function applyColors(colors: WorkspaceColors): Promise&lt;void&gt; {
+    const config = vscode.workspace.getConfiguration();
+    const existing = config.get&lt;Record&lt;string, string&gt;&gt;(
+        'workbench.colorCustomizations'
+    ) ?? {};
+
+    const updated = { ...existing };
+
+    for (const key of MANAGED_KEYS) {
+        const vscodeKey = KEY_MAP[key];
+        const value = colors[key];
+        if (value !== undefined) {
+            updated[vscodeKey] = value;
+        } else {
+            // If the color isn't set (element not affected), remove our old value
+            delete updated[vscodeKey];
+        }
+    }
+
+    await config.update(
+        'workbench.colorCustomizations',
+        Object.keys(updated).length > 0 ? updated : undefined,
+        vscode.ConfigurationTarget.Workspace
+    );
+}</code></pre>
+
+        <p>
+            The merge strategy:
+        </p>
+
+        <ol>
+            <li>
+                <strong>Read existing customizations.</strong> The <code>?? {}</code> handles the case where
+                no customizations exist yet.
+            </li>
+            <li>
+                <strong>Spread into a copy.</strong> <code>{ ...existing }</code> creates a shallow copy so we
+                don&rsquo;t mutate the original object.
+            </li>
+            <li>
+                <strong>Iterate only over managed keys.</strong> For each key in our list, either set it
+                (if the color was generated) or delete it (if the user disabled that element). Keys that
+                aren&rsquo;t in <code>MANAGED_KEYS</code> are left completely untouched.
+            </li>
+            <li>
+                <strong>Write back.</strong> If the result is empty, write <code>undefined</code> to remove the
+                setting entirely (keeping <code>settings.json</code> clean). The <code>ConfigurationTarget.Workspace</code>
+                ensures we only write to the workspace, never to the user&rsquo;s global settings.
+            </li>
+        </ol>
+
+        <div class="callout callout-warn">
+            <div class="callout-title">Warning</div>
+            <p>
+                Always use <code>ConfigurationTarget.Workspace</code> when writing color customizations.
+                Writing to <code>Global</code> would affect every workspace the user opens, which defeats
+                the purpose of per-workspace identity. This is a common mistake in color-theming extensions.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="resetting-colors">Resetting Colors</h2>
+        <!-- ============================================================ -->
+
+        <pre><code class="language-typescript">export async function resetColors(): Promise&lt;void&gt; {
+    const config = vscode.workspace.getConfiguration();
+    const existing = config.get&lt;Record&lt;string, string&gt;&gt;(
+        'workbench.colorCustomizations'
+    ) ?? {};
+
+    const updated = { ...existing };
+
+    for (const key of MANAGED_KEYS) {
+        delete updated[KEY_MAP[key]];
+    }
+
+    await config.update(
+        'workbench.colorCustomizations',
+        Object.keys(updated).length > 0 ? updated : undefined,
+        vscode.ConfigurationTarget.Workspace
+    );
+}</code></pre>
+
+        <p>
+            Reset follows the same pattern but only deletes. Every managed key is removed; everything else
+            survives. If the result is empty, the entire <code>workbench.colorCustomizations</code> key
+            is removed from <code>settings.json</code>.
+        </p>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                The managed-keys pattern is a general solution for any extension that writes to shared
+                configuration. The idea: declare which keys you own, iterate only over those, and leave
+                the rest alone. It&rsquo;s simple, correct, and easy to verify by inspection. The same
+                pattern works for other shared VS Code settings like <code>editor.tokenColorCustomizations</code>.
+            </p>
+        </div>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                Colors are now being generated (Section 4) and applied to workspace settings (this section).
+                Next, we&rsquo;ll build the color picker UI that lets users override the automatic hue
+                with a visual selection experience.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section04">&larr; Theme-Aware Color Generation</a>
+            <a href="/projects/color-identity/tutorial/section06">Next &rarr;</a>
+        </nav>

@@ -1,0 +1,264 @@
+---
+layout: coloridentity
+title: "Extension Anatomy — Color Identity Tutorial"
+permalink: /projects/color-identity/tutorial/section01
+---
+
+        <h1><span class="section-number">1.</span> Extension Anatomy</h1>
+        <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+            How <code>package.json</code> declares everything VS Code needs to know about an extension.
+        </p>
+
+        <!-- ============================================================ -->
+        <h2 id="the-extension-manifest">The Extension Manifest</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Every VS Code extension starts with <code>package.json</code>. It serves double duty: it&rsquo;s both
+            a standard npm package manifest and the extension&rsquo;s declaration to VS Code. The editor reads this
+            file to know when to activate your extension, what commands it provides, and what settings the user
+            can configure.
+        </p>
+
+        <p>
+            Here&rsquo;s the Color Identity manifest, annotated:
+        </p>
+
+        <pre><code class="language-json">{
+  "name": "color-identity",
+  "displayName": "Color Identity",
+  "description": "Theme-aware workspace coloring — distinguish VS Code windows
+                  with colors that harmonize with your active color theme.",
+  "version": "0.1.0",
+  "publisher": "bojordan",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js"
+}</code></pre>
+
+        <div class="callout callout-ext">
+            <div class="callout-title">VS Code Concept</div>
+            <p>
+                The <code>engines.vscode</code> field sets the minimum VS Code version. Extensions that use newer
+                APIs must declare the version that introduced them. Color Identity uses <code>^1.85.0</code>
+                because the APIs it relies on (QuickPick icons, status bar items, color theme detection)
+                have been stable since at least that version.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="activation-events">Activation Events</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            VS Code doesn&rsquo;t load every installed extension on startup. Instead, each extension declares
+            <em>activation events</em> &mdash; conditions under which VS Code should load and call the extension&rsquo;s
+            <code>activate()</code> function.
+        </p>
+
+        <p>
+            Color Identity uses <code>onStartupFinished</code>:
+        </p>
+
+        <pre><code class="language-json">"activationEvents": [
+  "onStartupFinished"
+]</code></pre>
+
+        <p>
+            This means: &ldquo;activate this extension after VS Code has finished all its startup work.&rdquo;
+            It&rsquo;s more polite than <code>*</code> (which activates immediately and can delay startup)
+            but still runs automatically without requiring the user to invoke a command first.
+        </p>
+
+        <div class="callout callout-tip">
+            <div class="callout-title">Tip</div>
+            <p>
+                For a coloring extension, <code>onStartupFinished</code> is the right call. The user wants colors
+                applied as soon as the editor is usable, without having to run a command every time they open
+                a workspace. But because we wait for startup to finish, we don&rsquo;t slow down the initial
+                window render.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="commands">Commands</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Commands are the primary way users interact with extensions. They show up in the Command Palette
+            (<code>Cmd+Shift+P</code>) and can be bound to keyboard shortcuts.
+            Color Identity declares four:
+        </p>
+
+        <pre><code class="language-json">"contributes": {
+  "commands": [
+    {
+      "command": "colorIdentity.chooseColor",
+      "title": "Color Identity: Choose Color…"
+    },
+    {
+      "command": "colorIdentity.applyColors",
+      "title": "Color Identity: Apply Colors"
+    },
+    {
+      "command": "colorIdentity.resetColors",
+      "title": "Color Identity: Reset Colors"
+    },
+    {
+      "command": "colorIdentity.refreshColors",
+      "title": "Color Identity: Refresh Colors for Current Theme"
+    }
+  ]
+}</code></pre>
+
+        <p>
+            A few conventions worth noting:
+        </p>
+
+        <ul>
+            <li>
+                <strong>Namespaced IDs:</strong> Every command ID starts with <code>colorIdentity.</code>.
+                This prevents collisions with other extensions and makes it easy to find your commands
+                in logs or when searching.
+            </li>
+            <li>
+                <strong>Human-readable titles:</strong> The title is what the user sees in the Command Palette.
+                Each starts with &ldquo;Color Identity:&rdquo; so the user can type the extension name
+                and find all its commands.
+            </li>
+            <li>
+                <strong>The ellipsis:</strong> &ldquo;Choose Color&hellip;&rdquo; uses an ellipsis to signal
+                that the command opens a dialog rather than performing an immediate action. This is a standard
+                UI convention in macOS and VS Code alike.
+            </li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <h2 id="configuration-schema">Configuration Schema</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            Extensions can declare settings that appear in VS Code&rsquo;s Settings UI (and in
+            <code>settings.json</code>). Color Identity declares seven:
+        </p>
+
+        <pre><code class="language-json">"configuration": {
+  "title": "Color Identity",
+  "properties": {
+    "colorIdentity.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Automatically apply identity colors when a workspace opens."
+    },
+    "colorIdentity.affectTitleBar": {
+      "type": "boolean",
+      "default": true,
+      "description": "Colorize the title bar."
+    },
+    "colorIdentity.affectActivityBar": {
+      "type": "boolean",
+      "default": true,
+      "description": "Colorize the activity bar."
+    },
+    "colorIdentity.affectStatusBar": {
+      "type": "boolean",
+      "default": true,
+      "description": "Colorize the status bar."
+    },
+    "colorIdentity.affectTabBar": {
+      "type": "boolean",
+      "default": false,
+      "description": "Colorize the editor tab bar background."
+    },
+    "colorIdentity.saturationAdjustment": {
+      "type": "number",
+      "default": 0,
+      "minimum": -50,
+      "maximum": 50,
+      "description": "Fine-tune saturation (-50 to +50)."
+    },
+    "colorIdentity.lightnessAdjustment": {
+      "type": "number",
+      "default": 0,
+      "minimum": -30,
+      "maximum": 30,
+      "description": "Fine-tune lightness (-30 to +30)."
+    },
+    "colorIdentity.hueOverride": {
+      "type": ["number", "null"],
+      "default": null,
+      "minimum": 0,
+      "maximum": 360,
+      "description": "Override the auto-detected hue (0–360). Null for automatic."
+    }
+  }
+}</code></pre>
+
+        <p>
+            This schema does several useful things automatically:
+        </p>
+
+        <ul>
+            <li>VS Code generates a Settings UI with toggles, sliders, and descriptions.</li>
+            <li>The <code>minimum</code>/<code>maximum</code> constraints are enforced before the extension ever sees the value.</li>
+            <li>The <code>default</code> values mean the extension works out of the box with no configuration.</li>
+            <li>All settings are workspace-scoped in practice (the extension reads and writes at workspace level), so each project gets its own identity.</li>
+        </ul>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Design Decision</div>
+            <p>
+                Notice that <code>affectTabBar</code> defaults to <code>false</code>. Coloring the tab bar
+                can feel heavy-handed &mdash; it&rsquo;s a lot of visual real estate and affects readability
+                of tab labels. The option exists for users who want it, but the default stays conservative.
+                Sensible defaults are part of good extension design: the user should get a good experience
+                without touching settings.
+            </p>
+        </div>
+
+        <!-- ============================================================ -->
+        <h2 id="build-and-debug">Build and Debug</h2>
+        <!-- ============================================================ -->
+
+        <p>
+            The <code>scripts</code> section defines the build pipeline:
+        </p>
+
+        <pre><code class="language-json">"scripts": {
+  "vscode:prepublish": "npm run compile",
+  "compile": "tsc -p ./",
+  "watch": "tsc -watch -p ./",
+  "lint": "eslint src --ext ts"
+}</code></pre>
+
+        <p>
+            <code>compile</code> runs the TypeScript compiler, outputting JavaScript to the <code>out/</code> directory
+            (which is where <code>"main": "./out/extension.js"</code> points). <code>watch</code> does the same but
+            re-compiles on every file save. <code>vscode:prepublish</code> is special &mdash; it runs automatically
+            when you package the extension with <code>vsce package</code>.
+        </p>
+
+        <p>
+            To debug: press <strong>F5</strong> in VS Code. This launches a second VS Code window (the
+            &ldquo;Extension Development Host&rdquo;) with your extension loaded. You can set breakpoints
+            in your TypeScript source files, inspect variables, and step through code. The <code>.vscode/launch.json</code>
+            and <code>.vscode/tasks.json</code> files configure this workflow.
+        </p>
+
+        <div class="checkpoint">
+            <div class="checkpoint-title">Checkpoint</div>
+            <p>
+                You now understand the extension&rsquo;s external contract &mdash; everything VS Code knows about
+                Color Identity before a single line of TypeScript runs. Next, we&rsquo;ll look at the types
+                and configuration reader that form the internal contract between the extension&rsquo;s modules.
+            </p>
+        </div>
+
+        <nav class="section-nav">
+            <a href="/projects/color-identity/tutorial/section00">&larr; Preface</a>
+            <a href="/projects/color-identity/tutorial/section02">Next &rarr;</a>
+        </nav>
