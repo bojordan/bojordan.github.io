@@ -1,6 +1,6 @@
 ---
 layout: coloridentity
-title: "Types & Configuration — Color Identity Tutorial"
+title: "Types & Configuration — ColorIdentity Tutorial"
 permalink: /projects/color-identity/tutorial/section02
 ---
 
@@ -14,7 +14,7 @@ permalink: /projects/color-identity/tutorial/section02
         <!-- ============================================================ -->
 
         <p>
-            Color Identity has six source files. Without a shared vocabulary, they&rsquo;d either import from each
+            ColorIdentity has six source files. Without a shared vocabulary, they&rsquo;d either import from each
             other in a tangled web or repeat type definitions. <code>types.ts</code> solves this by defining every
             interface and the config reader in one place. Every other module imports from here; none of them
             import from each other except through explicit function calls.
@@ -145,9 +145,13 @@ export interface WorkspaceColors {
         <h2 id="config-interface">The ColorIdentityConfig Interface</h2>
         <!-- ============================================================ -->
 
-        <pre><code class="language-typescript">/** Configuration read from user settings */
+        <pre><code class="language-typescript">/** Color mode: simple (dark/light detection) or harmonized (theme-aware palette) */
+export type ColorMode = 'simple' | 'harmonized';
+
+/** Configuration read from user settings */
 export interface ColorIdentityConfig {
     enabled: boolean;
+    colorMode: ColorMode;
     affectTitleBar: boolean;
     affectActivityBar: boolean;
     affectStatusBar: boolean;
@@ -155,14 +159,39 @@ export interface ColorIdentityConfig {
     saturationAdjustment: number;
     lightnessAdjustment: number;
     hueOverride: number | null;
+    harmonyOffset: number | null;
 }</code></pre>
 
         <p>
             This is a 1:1 mirror of the <code>package.json</code> configuration schema from Section 1. Every
-            setting the user can change has a typed field here. The <code>hueOverride</code> field uses
-            <code>number | null</code> &mdash; <code>null</code> means &ldquo;use the automatic hash-based hue,&rdquo;
-            while a number means &ldquo;use this specific hue.&rdquo;
+            setting the user can change has a typed field here.
         </p>
+
+        <p>
+            Two fields use <code>number | null</code>:
+        </p>
+
+        <ul>
+            <li>
+                <code>hueOverride</code> &mdash; <code>null</code> means &ldquo;use the automatic hash-based
+                hue;&rdquo; a number means &ldquo;use this specific hue.&rdquo;
+            </li>
+            <li>
+                <code>harmonyOffset</code> &mdash; <code>null</code> means no harmony relationship is stored;
+                a number is the angular offset from the theme&rsquo;s base hue (e.g., +25 for analogous warm,
+                +180 for complement). This is set automatically when the user picks a color in harmonized mode.
+            </li>
+        </ul>
+
+        <div class="callout callout-arch">
+            <div class="callout-title">Architecture Note</div>
+            <p>
+                The <code>ColorMode</code> type alias constrains the mode to exactly two strings. TypeScript
+                will catch any typo or invalid value at compile time. Using a union type rather than a boolean
+                (<code>isHarmonized</code>) makes the code self-documenting and leaves room for future modes
+                without changing the type&rsquo;s shape.
+            </p>
+        </div>
 
         <!-- ============================================================ -->
         <h2 id="reading-config">Reading Configuration</h2>
@@ -172,6 +201,7 @@ export interface ColorIdentityConfig {
     const cfg = vscode.workspace.getConfiguration('colorIdentity');
     return {
         enabled: cfg.get&lt;boolean&gt;('enabled', true),
+        colorMode: cfg.get&lt;ColorMode&gt;('colorMode', 'harmonized'),
         affectTitleBar: cfg.get&lt;boolean&gt;('affectTitleBar', true),
         affectActivityBar: cfg.get&lt;boolean&gt;('affectActivityBar', true),
         affectStatusBar: cfg.get&lt;boolean&gt;('affectStatusBar', true),
@@ -179,6 +209,7 @@ export interface ColorIdentityConfig {
         saturationAdjustment: cfg.get&lt;number&gt;('saturationAdjustment', 0),
         lightnessAdjustment: cfg.get&lt;number&gt;('lightnessAdjustment', 0),
         hueOverride: cfg.get&lt;number | null&gt;('hueOverride', null),
+        harmonyOffset: cfg.get&lt;number | null&gt;('harmonyOffset', null),
     };
 }</code></pre>
 
@@ -202,9 +233,9 @@ export interface ColorIdentityConfig {
         <div class="checkpoint">
             <div class="checkpoint-title">Checkpoint</div>
             <p>
-                You&rsquo;ve seen the data contracts that hold the extension together: four interfaces and one
-                config reader, all in 57 lines. Next, we&rsquo;ll see how the color generator uses these types
-                to turn a workspace name into a deterministic hue.
+                You&rsquo;ve seen the data contracts that hold the extension together: four interfaces, one
+                type alias, and one config reader, all in 63 lines. Next, we&rsquo;ll see how the color
+                generator uses these types to turn a workspace name into a deterministic hue.
             </p>
         </div>
 

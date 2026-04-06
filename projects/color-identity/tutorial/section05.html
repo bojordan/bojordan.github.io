@@ -1,6 +1,6 @@
 ---
 layout: coloridentity
-title: "Reading & Writing Workspace Settings — Color Identity Tutorial"
+title: "Reading & Writing Workspace Settings — ColorIdentity Tutorial"
 permalink: /projects/color-identity/tutorial/section05
 ---
 
@@ -16,7 +16,7 @@ permalink: /projects/color-identity/tutorial/section05
         <p>
             VS Code stores workspace-level UI colors in a single JSON object at
             <code>workbench.colorCustomizations</code> inside <code>.vscode/settings.json</code>.
-            Multiple extensions (and the user) might be writing to this same object. If Color Identity
+            Multiple extensions (and the user) might be writing to this same object. If ColorIdentity
             naively overwrites the entire object, it destroys other extensions&rsquo; customizations.
             If it only adds its own keys, it needs a way to <em>cleanly remove</em> them later.
         </p>

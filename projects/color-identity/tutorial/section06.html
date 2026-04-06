@@ -1,6 +1,6 @@
 ---
 layout: coloridentity
-title: "The Color Picker UI — Color Identity Tutorial"
+title: "The Color Picker UI — ColorIdentity Tutorial"
 permalink: /projects/color-identity/tutorial/section06
 ---
 
@@ -16,8 +16,7 @@ permalink: /projects/color-identity/tutorial/section06
         <p>
             VS Code&rsquo;s <code>showQuickPick</code> is the standard way to present a list of choices
             to the user. It&rsquo;s the same widget behind the Command Palette, file switcher, and
-            symbol search. For Color Identity, it becomes a color picker with 14 named presets,
-            an &ldquo;automatic&rdquo; option, and a custom hue entry.
+            symbol search. ColorIdentity uses it to build a color picker that adapts to the current mode.
         </p>
 
         <p>
@@ -27,47 +26,66 @@ permalink: /projects/color-identity/tutorial/section06
         <pre><code class="language-typescript">export async function showColorPicker(
     currentHue: number,
     themeProfile: ThemeProfile,
-    swatchDir: string
-): Promise&lt;{ hue: number | null } | undefined&gt;</code></pre>
+    swatchDir: string,
+    colorMode: ColorMode = 'simple'
+): Promise&lt;ColorPickResult | undefined&gt;</code></pre>
 
         <p>
-            Three possible return values:
+            The <code>ColorPickResult</code> carries the chosen hue and, in harmonized mode, the
+            angular offset from the theme&rsquo;s base hue:
+        </p>
+
+        <pre><code class="language-typescript">export interface ColorPickResult {
+    hue: number | null;
+    harmonyOffset?: number;  // only set in harmonized mode
+}</code></pre>
+
+        <p>
+            Three possible outcomes:
         </p>
 
         <ul>
-            <li><code>{ hue: 220 }</code> &mdash; user picked a specific hue (preset or custom).</li>
-            <li><code>{ hue: null }</code> &mdash; user picked &ldquo;Automatic&rdquo; (use the hash-based hue).</li>
+            <li><code>{ hue: 220 }</code> &mdash; user picked a specific hue (simple mode preset or custom).</li>
+            <li><code>{ hue: 245, harmonyOffset: 25 }</code> &mdash; user picked an analogous warm color in harmonized mode. The offset is stored so the color adapts on theme change.</li>
+            <li><code>{ hue: null }</code> &mdash; user picked &ldquo;Automatic.&rdquo;</li>
             <li><code>undefined</code> &mdash; user dismissed the picker without choosing.</li>
         </ul>
 
         <!-- ============================================================ -->
-        <h2 id="color-presets">Color Presets</h2>
+        <h2 id="simple-vs-harmonized">Simple Mode vs. Harmonized Mode</h2>
         <!-- ============================================================ -->
 
-        <pre><code class="language-typescript">export const COLOR_PRESETS: ColorPreset[] = [
-    { label: 'Red',         hue: 0   },
-    { label: 'Orange',      hue: 30  },
-    { label: 'Yellow',      hue: 55  },
-    { label: 'Lime',        hue: 80  },
-    { label: 'Green',       hue: 120 },
-    { label: 'Mint',        hue: 150 },
-    { label: 'Teal',        hue: 175 },
-    { label: 'Cyan',        hue: 190 },
-    { label: 'Blue',        hue: 220 },
-    { label: 'Indigo',      hue: 245 },
-    { label: 'Purple',      hue: 270 },
-    { label: 'Magenta',     hue: 300 },
-    { label: 'Pink',        hue: 330 },
-    { label: 'Rose',        hue: 350 },
-];</code></pre>
-
         <p>
-            Fourteen presets spaced around the color wheel. The spacing isn&rsquo;t uniform &mdash; there
-            are more entries in the warm range (Red through Yellow, 0&ndash;55&deg;) and the cool range
-            (Teal through Indigo, 175&ndash;245&deg;) because those regions contain more perceptually
-            distinct colors. The gap between Green (120&deg;) and Mint (150&deg;) is wider because
-            that region of the wheel has less visual variety.
+            The picker delegates to one of two internal functions based on the <code>colorMode</code> setting:
         </p>
+
+        <ul>
+            <li>
+                <strong>Simple mode</strong> (<code>showSimplePicker</code>) &mdash; shows 14 fixed color presets
+                spaced around the color wheel: Red, Orange, Yellow, Lime, Green, Mint, Teal, Cyan, Blue, Indigo,
+                Purple, Magenta, Pink, Rose. These are absolute hues that don&rsquo;t change with the theme.
+            </li>
+            <li>
+                <strong>Harmonized mode</strong> (<code>showHarmonizedPicker</code>) &mdash; reads the theme&rsquo;s
+                base hue from <code>themeAnalyzer.ts</code> and generates suggestions grouped by color harmony:
+                Analogous (&plusmn;25&deg;, &plusmn;40&deg;), Complementary (~180&deg;), Triadic (&plusmn;120&deg;),
+                and Split-Complementary (&plusmn;150&deg;). Each suggestion carries an <code>offset</code> from
+                the theme base, which gets persisted so the color relationship adapts on theme change.
+            </li>
+        </ul>
+
+        <div class="callout callout-color">
+            <div class="callout-title">Color Science</div>
+            <p>
+                The harmony groups come from classical color theory. <strong>Analogous</strong> colors
+                are neighbors on the wheel &mdash; they blend naturally but still provide distinction.
+                <strong>Complementary</strong> colors sit opposite and create maximum contrast.
+                <strong>Triadic</strong> colors are evenly spaced at 120&deg; intervals for balanced variety.
+                <strong>Split-complementary</strong> flanks the complement for a distinctive but less jarring effect.
+                The <code>themeAnalyzer.ts</code> module handles all of this &mdash; extracting the theme&rsquo;s
+                base hue and computing the harmony suggestions.
+            </p>
+        </div>
 
         <!-- ============================================================ -->
         <h2 id="building-the-picker">Building the Picker Items</h2>
@@ -129,7 +147,7 @@ permalink: /projects/color-identity/tutorial/section06
                 <code>QuickPickItem</code> supports <code>label</code>, <code>description</code> (shown
                 to the right of the label, muted), and <code>detail</code> (shown below the label, smaller).
                 The <code>kind</code> property can be set to <code>QuickPickItemKind.Separator</code> to
-                add visual dividers between groups of items. Color Identity uses separators to set apart
+                add visual dividers between groups of items. ColorIdentity uses separators to set apart
                 the &ldquo;Automatic&rdquo; option, the color presets, and the &ldquo;Custom Hue&rdquo; option.
             </p>
         </div>
@@ -144,7 +162,7 @@ permalink: /projects/color-identity/tutorial/section06
 
         <pre><code class="language-typescript">if ((picked as PickItem)._action === 'custom') {
     const input = await vscode.window.showInputBox({
-        title: 'Color Identity: Custom Hue',
+        title: 'ColorIdentity: Custom Hue',
         prompt: 'Enter a hue value (0 = red, 120 = green, 240 = blue)',
         value: String(currentHue),
         validateInput: (value) =&gt; {
@@ -182,9 +200,10 @@ permalink: /projects/color-identity/tutorial/section06
         <div class="checkpoint">
             <div class="checkpoint-title">Checkpoint</div>
             <p>
-                The color picker is a complete UI component: 14 theme-aware presets with swatch icons,
-                an automatic option, and a validated custom input. But where do those swatch PNG files
-                come from? That&rsquo;s the most surprising part of the whole extension.
+                The color picker is a dual-mode UI: simple mode for quick preset picks, harmonized mode
+                for theme-aware suggestions grounded in color theory. Both share the same swatch rendering
+                and custom input flow. But where do those swatch PNG files come from? That&rsquo;s the most
+                surprising part of the whole extension.
             </p>
         </div>
 

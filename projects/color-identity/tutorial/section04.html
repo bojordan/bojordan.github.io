@@ -1,6 +1,6 @@
 ---
 layout: coloridentity
-title: "Theme-Aware Color Generation — Color Identity Tutorial"
+title: "Theme-Aware Color Generation — ColorIdentity Tutorial"
 permalink: /projects/color-identity/tutorial/section04
 ---
 
@@ -15,7 +15,7 @@ permalink: /projects/color-identity/tutorial/section04
 
         <p>
             VS Code reports four possible theme kinds: Dark, Light, High Contrast (dark), and High Contrast Light.
-            Color Identity defines a profile for each &mdash; a set of saturation and lightness parameters that
+            ColorIdentity defines a profile for each &mdash; a set of saturation and lightness parameters that
             produce colors appropriate for that theme category:
         </p>
 
@@ -177,21 +177,25 @@ export function hslToHex(h: number, s: number, l: number): string {
     themeKind: vscode.ColorThemeKind,
     config: ColorIdentityConfig
 ): WorkspaceColors {
-    const hue = config.hueOverride ?? hashToHue(workspaceName);
+    const themeHue = config.colorMode === 'harmonized'
+        ? extractThemeBaseHue() : undefined;
+    const resolved = resolveHue(workspaceName, config, themeHue);
+    const hue = resolved.hue;
     const profile = getThemeProfile(themeKind);
 
-    const sat = clamp(profile.baseSaturation + config.saturationAdjustment, 0, 100);
-    const lit = clamp(profile.baseLightness + config.lightnessAdjustment, 0, 100);
-    const fgLit = profile.fgLightness;
-    const inactiveLit = clamp(lit + profile.inactiveLightnessShift, 0, 100);
+    let satBase = profile.baseSaturation;
+    let litBase = profile.baseLightness;
 
-    const bg = hslToHex(hue, sat, lit);
-    const fg = hslToHex(hue, Math.max(sat - 15, 0), fgLit);
-    const inactiveBg = hslToHex(hue, Math.max(sat - 10, 0), inactiveLit);
-    const inactiveFg = hslToHex(hue, Math.max(sat - 20, 0),
-                                clamp(fgLit - 20, 0, 100));
-    const accentBorder = hslToHex(hue, clamp(sat + 15, 0, 100),
-                                  clamp(lit + 10, 0, 100));</code></pre>
+    if (themeHue !== undefined) {
+        const dist = angularDistance(hue, themeHue);
+        const proximityFactor = 1 - dist / 180;
+        satBase = satBase + Math.round(8 * proximityFactor - 4);
+        litBase = litBase + Math.round(3 * proximityFactor);
+    }
+
+    const sat = clamp(satBase + config.saturationAdjustment, 0, 100);
+    const lit = clamp(litBase + config.lightnessAdjustment, 0, 100);
+    // ... derive bg, fg, inactiveBg, inactiveFg, accentBorder ...</code></pre>
 
         <p>
             Step by step:
@@ -199,15 +203,24 @@ export function hslToHex(h: number, s: number, l: number): string {
 
         <ol>
             <li>
-                <strong>Resolve the hue:</strong> Use the override if set; otherwise hash the workspace name.
-                The <code>??</code> (nullish coalescing) operator makes this clean.
+                <strong>Resolve the hue:</strong> In harmonized mode with a stored <code>harmonyOffset</code>,
+                the hue is computed as <code>themeBaseHue + offset</code>, so it adapts when the theme changes.
+                In simple mode (or without an offset), it falls back to <code>hueOverride</code> or the
+                workspace name hash.
             </li>
             <li>
                 <strong>Get the theme profile:</strong> Four numbers that encode the visual rules for this theme kind.
             </li>
             <li>
+                <strong>Harmony adjustments (harmonized mode only):</strong> The angular distance between
+                the chosen hue and the theme&rsquo;s base hue determines how saturation and lightness are shifted.
+                Analogous colors (close to the theme) get slightly more vivid; complementary colors (far from the
+                theme) stay subtler so they don&rsquo;t clash. The <code>proximityFactor</code> ranges from 1.0
+                (identical hue) to 0.0 (opposite on the wheel).
+            </li>
+            <li>
                 <strong>Apply user adjustments:</strong> The user&rsquo;s saturation and lightness adjustments
-                are added to the profile&rsquo;s base values, then clamped to valid ranges.
+                are added to the (possibly harmony-shifted) base values, then clamped to valid ranges.
             </li>
             <li>
                 <strong>Derive five colors:</strong> All from the same hue, with varying saturation and lightness:
@@ -228,6 +241,13 @@ export function hslToHex(h: number, s: number, l: number): string {
                 inactive background is <code>sat&nbsp;-&nbsp;10</code>, inactive foreground is <code>sat&nbsp;-&nbsp;20</code>.
                 This is deliberate &mdash; text and inactive states should be less vivid than the background.
                 Only the accent border <em>increases</em> saturation, because its job is to draw attention.
+            </p>
+            <p>
+                The harmony adjustments are also rooted in color science. On a color wheel, analogous colors
+                (within ~30&deg;) naturally blend with their neighbors, so they can tolerate higher saturation.
+                Complementary colors (near 180&deg;) create maximum contrast and can look garish at high
+                saturation &mdash; the <code>proximityFactor</code> dampens them to keep the tint cohesive
+                with the theme.
             </p>
         </div>
 
@@ -288,10 +308,11 @@ export function hslToHex(h: number, s: number, l: number): string {
         <div class="callout callout-arch">
             <div class="callout-title">Architecture Note</div>
             <p>
-                The <code>generateColors</code> function is <em>pure</em> &mdash; it takes inputs and returns
-                a value, with no side effects. It doesn&rsquo;t read settings (that&rsquo;s <code>readConfig</code>&rsquo;s
-                job), doesn&rsquo;t write to VS Code (that&rsquo;s <code>applyColors</code>&rsquo;s job), and
-                doesn&rsquo;t touch the UI. This makes it easy to test and easy to reason about.
+                The <code>generateColors</code> function also logs its reasoning to a dedicated
+                <code>ColorIdentity</code> output channel &mdash; the detected theme base hue, angular distance,
+                harmony adjustments, and final hex values. This diagnostic output is invaluable for understanding
+                why a particular color was chosen and verifying that harmony relationships look correct. Open the
+                Output panel and select &ldquo;ColorIdentity&rdquo; to see it.
             </p>
         </div>
 

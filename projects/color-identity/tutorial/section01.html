@@ -1,6 +1,6 @@
 ---
 layout: coloridentity
-title: "Extension Anatomy — Color Identity Tutorial"
+title: "Extension Anatomy — ColorIdentity Tutorial"
 permalink: /projects/color-identity/tutorial/section01
 ---
 
@@ -21,12 +21,12 @@ permalink: /projects/color-identity/tutorial/section01
         </p>
 
         <p>
-            Here&rsquo;s the Color Identity manifest, annotated:
+            Here&rsquo;s the ColorIdentity manifest, annotated:
         </p>
 
         <pre><code class="language-json">{
   "name": "color-identity",
-  "displayName": "Color Identity",
+  "displayName": "ColorIdentity",
   "description": "Theme-aware workspace coloring — distinguish VS Code windows
                   with colors that harmonize with your active color theme.",
   "version": "0.1.0",
@@ -44,7 +44,7 @@ permalink: /projects/color-identity/tutorial/section01
             <div class="callout-title">VS Code Concept</div>
             <p>
                 The <code>engines.vscode</code> field sets the minimum VS Code version. Extensions that use newer
-                APIs must declare the version that introduced them. Color Identity uses <code>^1.85.0</code>
+                APIs must declare the version that introduced them. ColorIdentity uses <code>^1.85.0</code>
                 because the APIs it relies on (QuickPick icons, status bar items, color theme detection)
                 have been stable since at least that version.
             </p>
@@ -61,7 +61,7 @@ permalink: /projects/color-identity/tutorial/section01
         </p>
 
         <p>
-            Color Identity uses <code>onStartupFinished</code>:
+            ColorIdentity uses <code>onStartupFinished</code>:
         </p>
 
         <pre><code class="language-json">"activationEvents": [
@@ -91,26 +91,26 @@ permalink: /projects/color-identity/tutorial/section01
         <p>
             Commands are the primary way users interact with extensions. They show up in the Command Palette
             (<code>Cmd+Shift+P</code>) and can be bound to keyboard shortcuts.
-            Color Identity declares four:
+            ColorIdentity declares four:
         </p>
 
         <pre><code class="language-json">"contributes": {
   "commands": [
     {
       "command": "colorIdentity.chooseColor",
-      "title": "Color Identity: Choose Color…"
+      "title": "ColorIdentity: Choose Color…"
     },
     {
       "command": "colorIdentity.applyColors",
-      "title": "Color Identity: Apply Colors"
+      "title": "ColorIdentity: Apply Colors"
     },
     {
       "command": "colorIdentity.resetColors",
-      "title": "Color Identity: Reset Colors"
+      "title": "ColorIdentity: Reset Colors"
     },
     {
       "command": "colorIdentity.refreshColors",
-      "title": "Color Identity: Refresh Colors for Current Theme"
+      "title": "ColorIdentity: Refresh Colors for Current Theme"
     }
   ]
 }</code></pre>
@@ -127,7 +127,7 @@ permalink: /projects/color-identity/tutorial/section01
             </li>
             <li>
                 <strong>Human-readable titles:</strong> The title is what the user sees in the Command Palette.
-                Each starts with &ldquo;Color Identity:&rdquo; so the user can type the extension name
+                Each starts with &ldquo;ColorIdentity:&rdquo; so the user can type the extension name
                 and find all its commands.
             </li>
             <li>
@@ -143,57 +143,50 @@ permalink: /projects/color-identity/tutorial/section01
 
         <p>
             Extensions can declare settings that appear in VS Code&rsquo;s Settings UI (and in
-            <code>settings.json</code>). Color Identity declares seven:
+            <code>settings.json</code>). ColorIdentity declares nine:
         </p>
 
         <pre><code class="language-json">"configuration": {
-  "title": "Color Identity",
+  "title": "ColorIdentity",
   "properties": {
     "colorIdentity.enabled": {
       "type": "boolean",
       "default": true,
       "description": "Automatically apply identity colors when a workspace opens."
     },
+    "colorIdentity.colorMode": {
+      "type": "string",
+      "enum": ["simple", "harmonized"],
+      "default": "harmonized",
+      "description": "Color selection mode. 'simple' uses basic theme detection;
+                      'harmonized' generates options that integrate with your theme."
+    },
     "colorIdentity.affectTitleBar": {
       "type": "boolean",
       "default": true,
       "description": "Colorize the title bar."
     },
-    "colorIdentity.affectActivityBar": {
-      "type": "boolean",
-      "default": true,
-      "description": "Colorize the activity bar."
-    },
-    "colorIdentity.affectStatusBar": {
-      "type": "boolean",
-      "default": true,
-      "description": "Colorize the status bar."
-    },
+    "colorIdentity.affectActivityBar": { ... },
+    "colorIdentity.affectStatusBar": { ... },
     "colorIdentity.affectTabBar": {
       "type": "boolean",
       "default": false,
       "description": "Colorize the editor tab bar background."
     },
-    "colorIdentity.saturationAdjustment": {
-      "type": "number",
-      "default": 0,
-      "minimum": -50,
-      "maximum": 50,
-      "description": "Fine-tune saturation (-50 to +50)."
-    },
-    "colorIdentity.lightnessAdjustment": {
-      "type": "number",
-      "default": 0,
-      "minimum": -30,
-      "maximum": 30,
-      "description": "Fine-tune lightness (-30 to +30)."
-    },
+    "colorIdentity.saturationAdjustment": { ... },
+    "colorIdentity.lightnessAdjustment": { ... },
     "colorIdentity.hueOverride": {
       "type": ["number", "null"],
       "default": null,
-      "minimum": 0,
-      "maximum": 360,
-      "description": "Override the auto-detected hue (0–360). Null for automatic."
+      "description": "Fixed hue (0–360). Null for automatic."
+    },
+    "colorIdentity.harmonyOffset": {
+      "type": ["number", "null"],
+      "default": null,
+      "minimum": -180,
+      "maximum": 180,
+      "description": "Offset from theme base hue. Set automatically by the
+                      picker in harmonized mode."
     }
   }
 }</code></pre>
@@ -212,11 +205,13 @@ permalink: /projects/color-identity/tutorial/section01
         <div class="callout callout-arch">
             <div class="callout-title">Design Decision</div>
             <p>
-                Notice that <code>affectTabBar</code> defaults to <code>false</code>. Coloring the tab bar
-                can feel heavy-handed &mdash; it&rsquo;s a lot of visual real estate and affects readability
-                of tab labels. The option exists for users who want it, but the default stays conservative.
-                Sensible defaults are part of good extension design: the user should get a good experience
-                without touching settings.
+                Two settings deserve special attention. <code>colorMode</code> defaults to
+                <code>"harmonized"</code> &mdash; the more sophisticated mode is the better default
+                experience, while <code>"simple"</code> is there for users who prefer the original
+                fixed-preset behavior. And <code>harmonyOffset</code> is set <em>automatically</em>
+                by the picker, not by the user directly. It stores the angular relationship to the
+                theme (e.g., +25&deg; for analogous, +180&deg; for complement) so colors can adapt
+                when the theme changes. We&rsquo;ll see how this works in Sections 4 and 8.
             </p>
         </div>
 
@@ -253,7 +248,7 @@ permalink: /projects/color-identity/tutorial/section01
             <div class="checkpoint-title">Checkpoint</div>
             <p>
                 You now understand the extension&rsquo;s external contract &mdash; everything VS Code knows about
-                Color Identity before a single line of TypeScript runs. Next, we&rsquo;ll look at the types
+                ColorIdentity before a single line of TypeScript runs. Next, we&rsquo;ll look at the types
                 and configuration reader that form the internal contract between the extension&rsquo;s modules.
             </p>
         </div>

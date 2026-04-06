@@ -1,6 +1,6 @@
 ---
 layout: coloridentity
-title: "Extension Lifecycle & Event-Driven Reactivity — Color Identity Tutorial"
+title: "Extension Lifecycle & Event-Driven Reactivity — ColorIdentity Tutorial"
 permalink: /projects/color-identity/tutorial/section08
 ---
 
@@ -74,16 +74,17 @@ permalink: /projects/color-identity/tutorial/section08
             Before looking at the commands, let&rsquo;s examine the helpers they share:
         </p>
 
-        <pre><code class="language-typescript">function getWorkspaceName(): string | undefined {
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders && folders.length > 0) {
-        return folders[0].name;
-    }
-    return undefined;
-}
-
-function getEffectiveHue(): number {
+        <pre><code class="language-typescript">function getEffectiveHue(): number {
     const config = readConfig();
+
+    // In harmonized mode with a stored offset, recompute from the
+    // current theme's base hue so the color adapts on theme change.
+    if (config.colorMode === 'harmonized'
+        && config.harmonyOffset !== null) {
+        const baseHue = extractThemeBaseHue();
+        return ((baseHue + config.harmonyOffset) % 360 + 360) % 360;
+    }
+
     if (config.hueOverride !== null) {
         return config.hueOverride;
     }
@@ -92,14 +93,15 @@ function getEffectiveHue(): number {
 }</code></pre>
 
         <p>
-            <code>getWorkspaceName</code> reads the first workspace folder&rsquo;s name. In a multi-root
-            workspace, it uses the first folder &mdash; a reasonable default. Returning <code>undefined</code>
-            when no workspace is open lets callers guard against that case.
+            <code>getEffectiveHue</code> resolves the hue through a priority chain. The key addition for
+            harmonized mode: if a <code>harmonyOffset</code> is stored, the effective hue is computed as
+            <code>themeBaseHue + offset</code>. This is what makes colors adapt automatically &mdash; the
+            offset (e.g., +25&deg; for analogous) stays fixed, but the base hue changes when the theme changes.
         </p>
 
         <p>
-            <code>getEffectiveHue</code> resolves the hue, giving priority to the override. This is called
-            by the status bar updater and the color picker to show the current state.
+            The modular arithmetic <code>((baseHue + offset) % 360 + 360) % 360</code> handles negative
+            offsets correctly &mdash; an offset of -120&deg; from base 90&deg; gives 330&deg;, not -30&deg;.
         </p>
 
         <!-- ============================================================ -->
@@ -109,21 +111,24 @@ function getEffectiveHue(): number {
         <pre><code class="language-typescript">function updateStatusBar(): void {
     const config = readConfig();
     if (!config.enabled) {
-        statusBarItem.text = '$(circle-slash) Color Identity';
-        statusBarItem.tooltip = 'Color Identity is disabled';
+        statusBarItem.text = '$(circle-slash) ColorIdentity';
+        statusBarItem.tooltip = 'ColorIdentity is disabled';
     } else {
         const hue = getEffectiveHue();
-        const isAuto = config.hueOverride === null;
-        statusBarItem.text = `$(symbol-color) Color Identity`;
+        const isHarmony = config.colorMode === 'harmonized'
+            && config.harmonyOffset !== null;
+        const isAuto = config.hueOverride === null && !isHarmony;
+        const source = isHarmony ? 'harmony' : isAuto ? 'auto' : 'override';
+        statusBarItem.text = `$(symbol-color) ColorIdentity`;
         statusBarItem.tooltip =
-            `Hue: ${hue}° (${isAuto ? 'auto' : 'override'}) — Click to change`;
+            `Hue: ${hue}° (${source}) — Click to change`;
     }
 }</code></pre>
 
         <p>
-            The status bar provides at-a-glance information: is the extension enabled? What&rsquo;s the
-            current hue? Is it auto-derived or overridden? The <code>$(symbol-color)</code> and
-            <code>$(circle-slash)</code> are Codicon icons that give visual weight to the indicator.
+            The status bar now reports three possible sources: <code>auto</code> (hash-derived),
+            <code>override</code> (manual hue), or <code>harmony</code> (offset from theme base).
+            This helps the user understand why a particular color was chosen.
         </p>
 
         <!-- ============================================================ -->
@@ -138,43 +143,51 @@ function getEffectiveHue(): number {
         <pre><code class="language-typescript">context.subscriptions.push(
     vscode.commands.registerCommand('colorIdentity.chooseColor', async () =&gt; {
         const workspaceName = getWorkspaceName();
-        if (!workspaceName) {
-            vscode.window.showWarningMessage(
-                'Color Identity: No workspace folder is open.'
-            );
-            return;
-        }
+        if (!workspaceName) { ... }
 
         const currentHue = getEffectiveHue();
         const themeKind = vscode.window.activeColorTheme.kind;
         const themeProfile = getThemeProfile(themeKind);
+        const config = readConfig();
         const result = await showColorPicker(
-            currentHue, themeProfile, swatchDir
+            currentHue, themeProfile, swatchDir, config.colorMode
         );
         if (result === undefined) {
             return; // dismissed
         }
 
-        await setHueOverride(result.hue);
+        await persistColorSelection(result.hue, result.harmonyOffset);
         // Config change listener will auto-apply
     })
 );</code></pre>
 
         <p>
-            The pattern: guard against invalid state (no workspace), gather current state, show the UI,
-            and write the result. Notice the comment &ldquo;Config change listener will auto-apply&rdquo; &mdash;
-            writing the hue override triggers a configuration change event, which the extension
-            handles separately. This avoids duplicating the color application logic.
+            The key change from the original: <code>persistColorSelection</code> writes <em>both</em>
+            <code>hueOverride</code> and <code>harmonyOffset</code> to workspace settings. In harmonized
+            mode, the offset is what enables theme-adaptive colors &mdash; the absolute hue is stored as
+            a fallback for when the theme&rsquo;s base hue can&rsquo;t be detected.
         </p>
+
+        <pre><code class="language-typescript">async function persistColorSelection(
+    hue: number | null,
+    harmonyOffset?: number
+): Promise&lt;void&gt; {
+    const cfg = vscode.workspace.getConfiguration('colorIdentity');
+    await cfg.update('hueOverride', hue,
+        vscode.ConfigurationTarget.Workspace);
+    await cfg.update('harmonyOffset', harmonyOffset ?? null,
+        vscode.ConfigurationTarget.Workspace);
+}</code></pre>
 
         <div class="callout callout-arch">
             <div class="callout-title">Architecture Note</div>
             <p>
                 This is event-driven design at work. The command doesn&rsquo;t apply colors directly &mdash;
-                it writes a setting and lets the config change listener do the rest. The benefit: every path
-                that changes a setting (the command, the Settings UI, manually editing <code>settings.json</code>)
-                triggers the same listener, so the extension always stays in sync regardless of how the
-                change was made.
+                it writes settings and lets the config change listener do the rest. Every path that changes
+                a setting (the command, the Settings UI, manually editing <code>settings.json</code>) triggers
+                the same listener, so the extension always stays in sync. The <code>harmonyOffset</code> is
+                the key innovation &mdash; it decouples &ldquo;what the user chose&rdquo; (a relationship)
+                from &ldquo;what gets applied&rdquo; (an absolute hue recomputed per theme).
             </p>
         </div>
 
@@ -186,18 +199,23 @@ function getEffectiveHue(): number {
             Two event listeners make the extension reactive:
         </p>
 
-        <pre><code class="language-typescript">// Re-apply when the user changes their color theme
+        <pre><code class="language-typescript">// Re-apply when the theme kind changes (e.g., Dark → Light)
 context.subscriptions.push(
     vscode.window.onDidChangeActiveColorTheme(() =&gt; {
-        clearSwatchCache(swatchDir); // swatches are theme-specific
-        applyIdentityColors();
+        clearSwatchCache(swatchDir);
+        setTimeout(() =&gt; applyIdentityColors(), 250);
     })
 );
 
-// Re-apply when our configuration changes
+// Re-apply when configuration changes — covers both our settings
+// AND the workbench color theme (switching between themes of the
+// same kind, e.g., Dark Modern → Dracula).
 context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) =&gt; {
-        if (e.affectsConfiguration('colorIdentity')) {
+        if (e.affectsConfiguration('workbench.colorTheme')) {
+            clearSwatchCache(swatchDir);
+            setTimeout(() =&gt; applyIdentityColors(), 250);
+        } else if (e.affectsConfiguration('colorIdentity')) {
             const config = readConfig();
             if (config.enabled) {
                 applyIdentityColors();
@@ -210,24 +228,35 @@ context.subscriptions.push(
 );</code></pre>
 
         <p>
-            The <strong>theme change listener</strong> fires when the user switches between dark and light themes
-            (or any theme at all). It clears the swatch cache (because swatches encode theme-specific colors)
-            and re-applies colors with the new theme profile.
+            There are now <strong>three event-driven triggers</strong>:
         </p>
 
-        <p>
-            The <strong>configuration change listener</strong> fires when any setting under the
-            <code>colorIdentity</code> namespace changes. It checks whether the extension is still enabled:
-            if yes, re-apply; if no, reset all colors and update the status bar.
-        </p>
+        <ol>
+            <li>
+                <strong>Theme kind change</strong> (<code>onDidChangeActiveColorTheme</code>) &mdash; fires when
+                the theme <em>kind</em> changes (e.g., Dark &rarr; Light). A 250ms delay lets the
+                <code>workbench.colorTheme</code> config settle before we read the new theme name.
+            </li>
+            <li>
+                <strong>Theme name change</strong> (<code>workbench.colorTheme</code> config) &mdash; fires when
+                switching between themes of the <em>same</em> kind (e.g., Dark Modern &rarr; Dracula). Without
+                this, the <code>onDidChangeActiveColorTheme</code> event wouldn&rsquo;t fire because the kind
+                didn&rsquo;t change.
+            </li>
+            <li>
+                <strong>Extension settings change</strong> (<code>colorIdentity.*</code>) &mdash; covers changes
+                from the Settings UI, <code>settings.json</code> edits, or the color picker command.
+            </li>
+        </ol>
 
         <div class="callout callout-ext">
             <div class="callout-title">VS Code Concept</div>
             <p>
-                <code>e.affectsConfiguration('colorIdentity')</code> is a performance guard. VS Code fires
-                the <code>onDidChangeConfiguration</code> event for <em>any</em> configuration change &mdash;
-                not just yours. Without this check, the extension would re-apply colors every time the user
-                changed their font size or any other unrelated setting.
+                The <code>setTimeout</code> delay is important. When the user switches themes, VS Code fires
+                events before the <code>workbench.colorTheme</code> config is fully updated.
+                <code>extractThemeBaseHue</code> reads that config to infer the theme&rsquo;s dominant hue
+                via name-matching heuristics. Without the delay, it would read the <em>old</em> theme name
+                and compute the wrong base hue.
             </p>
         </div>
 
@@ -264,10 +293,12 @@ context.subscriptions.push(
         <div class="checkpoint">
             <div class="checkpoint-title">Checkpoint</div>
             <p>
-                All six modules are now accounted for: types define the contracts, the color generator derives
-                palettes, the applier writes them to settings, the picker provides UI, the swatch generator
-                creates icons, and the extension entry point wires it all together with commands and event listeners.
-                The final section covers packaging and publishing.
+                All seven modules are now accounted for: types define the contracts, the theme analyzer
+                detects the active theme&rsquo;s hue, the color generator derives palettes with harmony-aware
+                adjustments, the applier writes them to settings, the picker provides a dual-mode UI, the
+                swatch generator creates icons, and the extension entry point wires it all together with
+                commands, event listeners, and theme-change reactivity. The final section covers packaging
+                and publishing.
             </p>
         </div>
 

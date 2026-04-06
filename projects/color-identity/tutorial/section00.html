@@ -1,12 +1,12 @@
 ---
 layout: coloridentity
-title: "Preface & Orientation — Color Identity Tutorial"
+title: "Preface & Orientation — ColorIdentity Tutorial"
 permalink: /projects/color-identity/tutorial/section00
 ---
 
         <h1><span class="section-number">0.</span> Preface &amp; Orientation</h1>
         <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
-            What Color Identity does, what you&rsquo;ll learn, and how this tutorial is organized.
+            What ColorIdentity does, what you&rsquo;ll learn, and how this tutorial is organized.
         </p>
 
         <!-- ============================================================ -->
@@ -14,38 +14,42 @@ permalink: /projects/color-identity/tutorial/section00
         <!-- ============================================================ -->
 
         <p>
-            <a href="https://github.com/bojordan/ColorIdentity">Color Identity</a> is a VS Code extension that
+            <a href="https://github.com/bojordan/ColorIdentity">ColorIdentity</a> is a VS Code extension that
             automatically gives each workspace a unique, harmonious color identity. Open three projects side by side
             and you can tell them apart at a glance &mdash; the title bar, activity bar, and status bar each carry a
             tint derived from the workspace&rsquo;s folder name.
         </p>
 
         <p>
-            Unlike extensions that let you pick arbitrary colors, Color Identity <em>derives</em> its palette from
-            two inputs: a deterministic hash of your folder name (so the same project always gets the same hue) and
-            your active color theme (so dark themes get dark tints, light themes get light tints, and the colors never
-            clash with the rest of your editor).
+            Unlike extensions that let you pick arbitrary colors, ColorIdentity <em>derives</em> its palette from
+            your workspace name and active color theme. In its default <strong>harmonized mode</strong>, it goes
+            further: it analyzes your theme&rsquo;s dominant hue and offers color suggestions based on color
+            harmony theory (analogous, complementary, triadic, split-complementary). When you switch themes,
+            your chosen harmony relationship carries over automatically &mdash; the colors adapt without
+            reopening the picker.
         </p>
 
         <div class="diagram">
- Workspace folder name         Active color theme         Color Identity
-┌─────────────────────┐       ┌─────────────────┐       ┌────────────────────────────────┐
-│  "my-project"       │──────▶│  <em>djb2 hash</em>      │──────▶│  hue = 217&deg;                    │
-└─────────────────────┘       └─────────────────┘       │                                │
-                                                        │  + <em>theme profile</em> (dark/light)  │
-                              ┌─────────────────┐       │  &darr;                             │
-                              │  Dark / Light / │──────▶│  saturation, lightness derived │
-                              │  High Contrast  │       │  &darr;                             │
-                              └─────────────────┘       │  title bar, activity bar,      │
-                                                        │  status bar, tab bar           │
-                                                        └────────────────────────────────┘
+ Workspace folder name         Active color theme           ColorIdentity
+┌─────────────────────┐       ┌──────────────────┐       ┌──────────────────────────────────┐
+│  "my-project"       │──────▶│  <em>djb2 hash</em>       │──────▶│  hue = 217&deg; (auto)              │
+└─────────────────────┘       └──────────────────┘       │  — or —                          │
+                                                         │  hue = base + offset (harmonized) │
+                              ┌──────────────────┐       │                                   │
+                              │  Theme kind +    │──────▶│  + <em>theme profile</em> (dark/light)    │
+                              │  theme base hue  │       │  + harmony sat/lit adjustments    │
+                              └──────────────────┘       │  &darr;                               │
+                                                         │  title bar, activity bar,         │
+                                                         │  status bar, tab bar              │
+                                                         └──────────────────────────────────┘
         </div>
 
         <p>
-            The extension is small &mdash; six TypeScript files, around 690 lines of code total, with
+            The extension is small &mdash; seven TypeScript files, around 1,190 lines of code total, with
             <strong>zero runtime dependencies</strong>. But it covers a surprising range of topics:
-            VS Code extension APIs, HSL color theory, deterministic hashing, PNG file encoding from scratch,
-            event-driven reactivity, and workspace settings management. That&rsquo;s what this tutorial is about.
+            VS Code extension APIs, HSL color theory, color harmony, deterministic hashing, theme analysis,
+            PNG file encoding from scratch, event-driven reactivity, and workspace settings management.
+            That&rsquo;s what this tutorial is about.
         </p>
 
         <!-- ============================================================ -->
@@ -136,15 +140,15 @@ permalink: /projects/color-identity/tutorial/section00
 
         <p>
             Like the other tutorials on this site, this one <em>explains an existing project</em> rather than
-            having you type code line by line. Every section walks through real code from the Color Identity source,
+            having you type code line by line. Every section walks through real code from the ColorIdentity source,
             explains each decision, and highlights the tradeoffs. You&rsquo;re encouraged to have the
             source open in VS Code alongside these pages.
         </p>
 
-        <h3 id="the-six-source-files">The Six Source Files</h3>
+        <h3 id="the-seven-source-files">The Seven Source Files</h3>
 
         <p>
-            The entire extension lives in six TypeScript files. Here&rsquo;s the map:
+            The entire extension lives in seven TypeScript files. Here&rsquo;s the map:
         </p>
 
         <table>
@@ -158,33 +162,38 @@ permalink: /projects/color-identity/tutorial/section00
             <tbody>
                 <tr>
                     <td><code>extension.ts</code></td>
-                    <td>172</td>
+                    <td>202</td>
                     <td>Entry point. Registers commands, creates the status bar, wires up event listeners, orchestrates color application.</td>
                 </tr>
                 <tr>
                     <td><code>colorGenerator.ts</code></td>
-                    <td>137</td>
-                    <td>The color engine. Hashes workspace names to hues, defines theme profiles, converts HSL to hex, generates the full palette.</td>
+                    <td>233</td>
+                    <td>The color engine. Hashes workspace names to hues, defines theme profiles, converts HSL to hex, generates the full palette with harmony-aware adjustments.</td>
                 </tr>
                 <tr>
-                    <td><code>colorApplier.ts</code></td>
-                    <td>86</td>
-                    <td>Settings integration. Reads and writes <code>workbench.colorCustomizations</code> without clobbering other extensions.</td>
+                    <td><code>themeAnalyzer.ts</code></td>
+                    <td>257</td>
+                    <td>Theme analysis. Extracts the active theme&rsquo;s base hue and generates harmony-relative color suggestions (analogous, complementary, triadic, split-complementary).</td>
                 </tr>
                 <tr>
                     <td><code>colorPicker.ts</code></td>
-                    <td>109</td>
-                    <td>The color picker UI. A QuickPick with 14 named presets, live swatches, and custom hue input.</td>
+                    <td>222</td>
+                    <td>The color picker UI. Dual-mode QuickPick: simple (fixed presets) or harmonized (theme-relative harmony groups), with swatch icons and custom hue input.</td>
+                </tr>
+                <tr>
+                    <td><code>colorApplier.ts</code></td>
+                    <td>85</td>
+                    <td>Settings integration. Reads and writes <code>workbench.colorCustomizations</code> without clobbering other extensions.</td>
                 </tr>
                 <tr>
                     <td><code>swatchGenerator.ts</code></td>
-                    <td>129</td>
+                    <td>128</td>
                     <td>PNG encoder. Generates solid-color swatch images at runtime using raw PNG encoding &mdash; no image library.</td>
                 </tr>
                 <tr>
                     <td><code>types.ts</code></td>
-                    <td>57</td>
-                    <td>Shared interfaces and the config reader. Defines the contracts that keep the other five files decoupled.</td>
+                    <td>63</td>
+                    <td>Shared interfaces and the config reader. Defines the contracts that keep the other six files decoupled.</td>
                 </tr>
             </tbody>
         </table>
