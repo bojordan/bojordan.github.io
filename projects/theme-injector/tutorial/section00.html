@@ -1,10 +1,10 @@
 ---
 layout: themeinjector
-title: "Section 0: The Problem & the Exploit"
+title: "Section 0: The Problem & the Opportunity"
 permalink: /projects/theme-injector/tutorial/section00
 ---
 
-<h2 id="the-problem-and-the-exploit"><span class="section-number">0.</span> The Problem &amp; the Exploit</h2>
+<h2 id="the-problem-and-the-opportunity"><span class="section-number">0.</span> The Problem &amp; the Opportunity</h2>
 <p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
   How a missing API and an exposed debug protocol create an opportunity for custom theming.
 </p>
@@ -27,7 +27,7 @@ permalink: /projects/theme-injector/tutorial/section00
 
 <p>
   The &ldquo;new&rdquo; Teams (the Electron-to-WebView2 rewrite Microsoft shipped in
-  late 2023) changed the runtime architecture in a way that creates an exploit.
+  late 2023) changed the runtime architecture in a way that opens the door to customization.
   Understanding that architecture is the key to everything that follows.
 </p>
 
@@ -391,7 +391,7 @@ async function checkMode(Runtime) {
 </ul>
 
 <p>
-  The exploit is established. But what CSS values do we actually inject? We can&rsquo;t
+  The approach is established. But what CSS values do we actually inject? We can&rsquo;t
   just guess &mdash; Teams uses nearly 500 design tokens. In the next section, we&rsquo;ll
   build an observation pipeline that extracts every token from a live Teams instance.
 </p>
