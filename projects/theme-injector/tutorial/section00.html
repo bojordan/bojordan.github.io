@@ -1,0 +1,402 @@
+---
+layout: themeinjector
+title: "Section 0: The Problem & the Exploit"
+permalink: /projects/theme-injector/tutorial/section00
+---
+
+<h2 id="the-problem-and-the-exploit"><span class="section-number">0.</span> The Problem &amp; the Exploit</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  How a missing API and an exposed debug protocol create an opportunity for custom theming.
+</p>
+
+<p>
+  <span class="tag tag-cdp">CDP</span>
+  <span class="tag tag-arch">Arch</span>
+</p>
+
+<h3 id="the-gap">The Gap in Teams&rsquo; Theming</h3>
+
+<p>
+  Microsoft Teams ships with exactly three appearance options: <strong>Light</strong>,
+  <strong>Dark</strong>, and <strong>High Contrast</strong>. There is no theme API,
+  no extension point, no CSS override mechanism, and no user-facing way to tweak colors.
+  If you find the white background too bright, the dark mode too stark, or you simply
+  want your chat app to match the VS Code theme you stare at all day &mdash; you&rsquo;re
+  out of luck. Or so it seems.
+</p>
+
+<p>
+  The &ldquo;new&rdquo; Teams (the Electron-to-WebView2 rewrite Microsoft shipped in
+  late 2023) changed the runtime architecture in a way that creates an exploit.
+  Understanding that architecture is the key to everything that follows.
+</p>
+
+<h3 id="webview2-architecture">WebView2: Chromium Inside a Native Shell</h3>
+
+<p>
+  Classic Teams was an Electron app &mdash; Node.js + Chromium bundled together. The
+  new Teams replaces Electron with <strong>WebView2</strong>, Microsoft&rsquo;s embeddable
+  Chromium control. The native shell (written in C++ / .NET) hosts a WebView2 instance
+  that renders the same React/Fluent UI web application you&rsquo;d see in a browser at
+  <code>teams.microsoft.com</code>.
+</p>
+
+<p>
+  WebView2 is built on Chromium, and Chromium exposes the
+  <strong>Chrome DevTools Protocol (CDP)</strong> &mdash; a JSON-over-WebSocket API that
+  lets external tools inspect, debug, and manipulate a running browser. CDP is how Chrome
+  DevTools, Playwright, and Puppeteer work. If you can enable it on the Teams WebView2
+  instance, you gain the same level of access to Teams&rsquo; DOM that DevTools gives you
+  on a regular web page.
+</p>
+
+<div class="callout callout-cdp">
+  <div class="callout-title">CDP Concept</div>
+  <p>
+    The <strong>Chrome DevTools Protocol</strong> exposes &ldquo;domains&rdquo; like
+    <code>Runtime</code>, <code>Page</code>, <code>DOM</code>, and <code>Network</code>.
+    Each domain has methods you can call over a WebSocket. For theme injection, we only need
+    two: <code>CDP.List()</code> to discover page targets, and
+    <code>Runtime.evaluate()</code> to run JavaScript inside the page context.
+  </p>
+</div>
+
+<h3 id="enabling-cdp">Enabling the Debug Port</h3>
+
+<p>
+  WebView2 doesn&rsquo;t expose CDP by default. You have to opt in by passing
+  <code>--remote-debugging-port=PORT</code> to the Chromium engine at startup.
+  For standalone apps like Teams and Outlook, Microsoft provides a per-application
+  registry key mechanism:
+</p>
+
+<pre><code class="language-powershell"># Registry path for per-app WebView2 arguments
+$regPath = "HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+
+# Assign dedicated ports to each app
+New-Item -Path $regPath -Force | Out-Null
+Set-ItemProperty -Path $regPath -Name "ms-teams.exe" -Value "--remote-debugging-port=9222"
+Set-ItemProperty -Path $regPath -Name "olk.exe"       -Value "--remote-debugging-port=9223"</code></pre>
+
+<p>
+  Each value name is the executable filename. When <code>ms-teams.exe</code> launches,
+  the WebView2 loader reads this key and appends the flag. After a restart, Teams listens
+  on <code>localhost:9222</code> for CDP connections.
+</p>
+
+<div class="callout callout-warn">
+  <div class="callout-title">Warning</div>
+  <p>
+    An older approach used the <code>WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS</code>
+    environment variable. This is a global setting &mdash; <em>every</em> WebView2 app
+    on your system reads it. If Teams and Outlook both try to use port 9222, one will
+    fail to start. The per-app registry key approach avoids this entirely.
+    The <code>setup.ps1</code> script in the project automatically removes the legacy
+    env var if it finds one.
+  </p>
+</div>
+
+<h3 id="discovering-targets">Discovering Page Targets</h3>
+
+<p>
+  Once the debug port is active, you can enumerate available targets by calling
+  <code>CDP.List()</code>. This returns an array of objects describing each browsing
+  context &mdash; pages, service workers, iframes. We filter for <code>type: "page"</code>
+  to find the main Teams window:
+</p>
+
+<pre><code class="language-javascript">const CDP = require("chrome-remote-interface");
+
+// List all page targets on the Teams debug port
+const targets = await CDP.List({ port: 9222 });
+const pages = targets.filter(t => t.type === "page");
+
+// Each target has:
+// {
+//   id: "E3F2A1...",
+//   title: "Microsoft Teams",
+//   url: "https://teams.microsoft.com/v2/...",
+//   type: "page",
+//   webSocketDebuggerUrl: "ws://localhost:9222/devtools/page/E3F2A1..."
+// }</code></pre>
+
+<p>
+  The <code>webSocketDebuggerUrl</code> is the WebSocket endpoint for CDP commands.
+  The <code>chrome-remote-interface</code> npm package wraps this into a clean async API.
+  In the codebase, the shared <code>cdp.js</code> module handles port scanning,
+  target identification, and connection:
+</p>
+
+<pre><code class="language-javascript">// From cdp.js — identifying which app a target belongs to
+function identifyApp(target) {
+  const url = (target.url || "").toLowerCase();
+  const title = (target.title || "").toLowerCase();
+  if (url.includes("teams.microsoft") || url.includes("teams.live")) return "Teams";
+  if (url.includes("outlook.office") || url.includes("outlook.live"))  return "Outlook";
+  if (title.includes("teams")) return "Teams";
+  if (title.includes("outlook") || title.includes("mail")) return "Outlook";
+  return "WebView2";
+}</code></pre>
+
+<p>
+  The module also implements a fallback port scan. If the configured ports yield no
+  targets, it probes ports 9222&ndash;9231 looking for any WebView2 instance. This
+  handles cases where the debug port was assigned a non-default value.
+</p>
+
+<h3 id="connecting-and-evaluating">Connecting &amp; Evaluating JavaScript</h3>
+
+<p>
+  With a target identified, we open a CDP session and use <code>Runtime.evaluate()</code>
+  to execute arbitrary JavaScript inside the Teams page context:
+</p>
+
+<pre><code class="language-javascript">// From cdp.js — connecting to the first Teams target
+async function connectToTeams() {
+  const targets = await findTargets("Teams");
+  if (targets.length === 0) {
+    throw new Error("No Teams target found. Is CDP enabled?");
+  }
+
+  // Prefer the primary window (title contains "|")
+  const target =
+    targets.find(t => t.title && t.title.includes("|")) || targets[0];
+
+  const client = await CDP({ port: target._port, target });
+  const { Runtime, Page } = client;
+  await Page.enable();
+
+  return { client, Runtime, Page, target };
+}</code></pre>
+
+<p>
+  With this connection, any JavaScript you pass to <code>Runtime.evaluate()</code> runs
+  as if you typed it in the browser console. You have full access to the DOM, computed
+  styles, localStorage, and every API the page uses.
+</p>
+
+<h3 id="injection-strategy">The Injection Strategy</h3>
+
+<p>
+  The core idea is simple: create a <code>&lt;style&gt;</code> element, fill it with CSS
+  custom property overrides, and append it to <code>&lt;head&gt;</code>. The injected
+  element gets an ID so it can be found and replaced on subsequent injections:
+</p>
+
+<pre><code class="language-javascript">// From injector.js — building the injection expression
+function buildInjectionExpression(css) {
+  const escaped = css.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
+  return `
+    (() => {
+      let el = document.getElementById('custom-teams-theme');
+      if (el) el.remove();
+      const style = document.createElement('style');
+      style.id = 'custom-teams-theme';
+      style.textContent = \`${escaped}\`;
+      document.head.appendChild(style);
+    })();
+  `;
+}</code></pre>
+
+<p>
+  This pattern is idempotent &mdash; calling it again replaces the previous theme
+  rather than stacking overrides. Removal is equally straightforward:
+</p>
+
+<pre><code class="language-javascript">function buildRemoveExpression() {
+  return `
+    (() => {
+      const el = document.getElementById('custom-teams-theme');
+      if (el) { el.remove(); return 'removed'; }
+      return 'not found';
+    })();
+  `;
+}</code></pre>
+
+<h3 id="why-fui-fluent-provider">Why <code>.fui-FluentProvider</code> and <code>!important</code></h3>
+
+<p>
+  If you try the na&iuml;ve approach &mdash; setting CSS custom properties on
+  <code>:root</code> &mdash; nothing happens. Teams uses
+  <strong>Fluent UI React v9</strong>, which applies its design tokens (CSS custom
+  properties) on the <code>.fui-FluentProvider</code> element, not on <code>:root</code>.
+  The FluentProvider wrapper sits near the top of the React tree and scopes all token
+  values to its subtree.
+</p>
+
+<div class="callout callout-design">
+  <div class="callout-title">Design System Concept</div>
+  <p>
+    Fluent UI v9 uses a library called <strong>Griffel</strong> for CSS-in-JS. Griffel
+    generates atomic CSS classes at build time and applies them with high specificity.
+    Its styles are injected into <code>&lt;style&gt;</code> tags in
+    <code>&lt;head&gt;</code>, and they reference the custom properties set on
+    <code>.fui-FluentProvider</code>. Our overrides must target the same element
+    with enough specificity to win. The <code>!important</code> flag ensures our
+    values take precedence over Griffel&rsquo;s injected styles.
+  </p>
+</div>
+
+<p>
+  A theme CSS file targets the FluentProvider and overrides every token:
+</p>
+
+<pre><code class="language-css">/* Generated theme file — targets the Fluent UI provider */
+.fui-FluentProvider {
+  --colorNeutralBackground1: #d4cfc7 !important;
+  --colorNeutralBackground2: #cac5bd !important;
+  --colorNeutralBackground3: #c0bbb3 !important;
+  --colorNeutralForeground1: #1a1a1a !important;
+  --colorNeutralForeground2: #2e2e2e !important;
+  /* ... 490+ more token overrides ... */
+}</code></pre>
+
+<h3 id="architecture-diagram">Architecture Overview</h3>
+
+<p>
+  The complete injection flow involves four components communicating over two protocols:
+</p>
+
+<div class="diagram">
+┌─────────────────────────────────────────────────────────┐
+│                     Your Machine                        │
+│                                                         │
+│   ┌──────────────┐     WebSocket (CDP)    ┌───────────┐ │
+│   │              │◄──────────────────────►│           │ │
+│   │  injector.js │  Runtime.evaluate()    │  Teams    │ │
+│   │  (Node.js)   │─────────────────────► │ WebView2  │ │
+│   │              │                        │           │ │
+│   │  Reads:      │     DOM Mutation       │ Renders:  │ │
+│   │  themes/*.css│ ◄─ ─ ─ ─ ─ ─ ─ ─ ─ ─ │ Fluent UI │ │
+│   │  theme.config│                        │ React App │ │
+│   └──────────────┘                        └───────────┘ │
+│         │                                      ▲        │
+│         │ fs.watch()                           │        │
+│         ▼                                      │        │
+│   ┌──────────────┐                    ┌────────┴──────┐ │
+│   │  Theme CSS   │                    │  &lt;style id=   │ │
+│   │  File on     │   ── inject ──►   │  "custom-     │ │
+│   │  Disk        │                    │  teams-theme"&gt;│ │
+│   └──────────────┘                    └───────────────┘ │
+│                                                         │
+│   Registry: HKCU:\...\AdditionalBrowserArguments        │
+│     ms-teams.exe = "--remote-debugging-port=9222"       │
+└─────────────────────────────────────────────────────────┘
+</div>
+
+<h3 id="live-reload">Live Reload via File Watcher</h3>
+
+<p>
+  The injector doesn&rsquo;t just inject once &mdash; it watches the theme CSS file for
+  changes using <code>fs.watch()</code>. When you edit and save the theme file, the
+  injector reads the new CSS, rebuilds the injection expression, and pushes it to all
+  connected Teams windows. Changes appear in under a second, making iterative theme
+  development fast and visual.
+</p>
+
+<pre><code class="language-javascript">// From injector.js — file watcher for live reload
+watcher = fs.watch(themeFile, { persistent: true }, (eventType) => {
+  if (eventType === "change") {
+    const css = fs.readFileSync(themeFile, "utf-8");
+    expression = buildInjectionExpression(css);
+    injectAll();  // Push to all connected clients
+    console.log(`  Re-injected (file changed)`);
+  }
+});</code></pre>
+
+<h3 id="multi-target">Multi-Target Injection</h3>
+
+<p>
+  Teams can have multiple WebView2 page targets &mdash; the main window, pop-out chats,
+  meeting windows, and the calling overlay. The injector connects to <em>all</em> of them
+  via <code>connectToAllTeams()</code> and periodically scans for new targets that may
+  have appeared since startup:
+</p>
+
+<pre><code class="language-javascript">// Periodic scan for new targets (pop-outs, meeting windows)
+setInterval(async () => {
+  const targets = await findTargets("Teams");
+  for (const t of targets) {
+    if (!connectedTargetIds.has(t.id)) {
+      // New target discovered — connect and inject
+      const client = await CDP({ port: t._port, target: t });
+      await client.Page.enable();
+      await client.Runtime.evaluate({ expression, returnByValue: true });
+      connectedTargetIds.add(t.id);
+    }
+  }
+}, TARGET_SCAN_INTERVAL_MS);</code></pre>
+
+<div class="callout callout-tip">
+  <div class="callout-title">Tip</div>
+  <p>
+    The theme must be re-injected each time Teams navigates internally (e.g., switching
+    between Chat and Calendar). The injector handles this by polling and re-injecting on
+    a 5-second interval, ensuring the theme persists across navigation events.
+  </p>
+</div>
+
+<h3 id="mode-detection">Mode Detection &amp; Auto-Switching</h3>
+
+<p>
+  Since dimmed themes are derived from the light palette, they look wrong if Teams
+  is in Dark mode. The injector detects the native mode and can automatically switch
+  Teams to the preferred mode by driving the Settings UI via CDP:
+</p>
+
+<pre><code class="language-javascript">// From injector.js — detect native mode by temporarily removing injected style
+async function checkMode(Runtime) {
+  const result = await Runtime.evaluate({
+    expression: `
+      (() => {
+        const injected = document.getElementById('custom-teams-theme');
+        if (injected) injected.remove();
+
+        // Force style recalc
+        document.body.offsetHeight;
+
+        const p = document.querySelector('.fui-FluentProvider');
+        let mode = 'unknown';
+        if (p) {
+          const bg = getComputedStyle(p)
+            .getPropertyValue('--colorNeutralBackground1').trim();
+          // ... parse and check luminance ...
+          mode = brightness > 0.5 ? 'light' : 'dark';
+        }
+
+        return mode;
+      })()
+    `,
+    returnByValue: true,
+  });
+  return result.result.value;
+}</code></pre>
+
+<p>
+  The trick: temporarily remove the injected style, force a layout recalculation, read
+  the native background color, and then re-inject. This gives the true underlying mode
+  rather than the visually rendered one.
+</p>
+
+<h3 id="summary">What We&rsquo;ve Established</h3>
+
+<ul>
+  <li>Teams has no theme API, but runs on WebView2 (Chromium)</li>
+  <li>Per-app registry keys enable CDP debug ports without conflicts</li>
+  <li><code>CDP.List()</code> discovers page targets; <code>Runtime.evaluate()</code> runs JS</li>
+  <li>A <code>&lt;style id="custom-teams-theme"&gt;</code> element overrides Fluent UI tokens</li>
+  <li><code>.fui-FluentProvider</code> with <code>!important</code> beats Griffel&rsquo;s CSS-in-JS</li>
+  <li>File watching enables live-reload development</li>
+  <li>Multi-target support covers pop-outs and meeting windows</li>
+</ul>
+
+<p>
+  The exploit is established. But what CSS values do we actually inject? We can&rsquo;t
+  just guess &mdash; Teams uses nearly 500 design tokens. In the next section, we&rsquo;ll
+  build an observation pipeline that extracts every token from a live Teams instance.
+</p>
+
+<div class="section-nav">
+  <span></span>
+  <a href="/projects/theme-injector/tutorial/section01">Next: Observation &rarr;</a>
+</div>

@@ -1,0 +1,692 @@
+---
+layout: themeinjector
+title: "Section 4: Porting VS Code Themes — Palette to Tokens"
+permalink: /projects/theme-injector/tutorial/section04
+---
+
+<h2 id="porting-themes"><span class="section-number">4.</span> Porting VS Code Themes &mdash; Palette to Tokens</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  Replacing 400+ manual token assignments with a 25-role semantic palette
+  and a structural mapping engine that auto-extracts themes from VS Code.
+</p>
+
+<p>
+  <span class="tag tag-arch">Arch</span>
+  <span class="tag tag-design">Design</span>
+</p>
+
+<h3 id="v1-problem">The v1 Problem: One Token at a Time</h3>
+
+<p>
+  In v1, porting a theme to Teams meant opening a CSS file and manually assigning
+  a color to each of 400+ Fluent UI tokens. <code>--colorNeutralBackground1</code>?
+  Pick a shade. <code>--colorNeutralForeground2Hover</code>? Slightly brighter. 
+  <code>--colorBrandBackgroundPressed</code>? Something that looks right. Repeat 
+  four hundred times.
+</p>
+
+<p>
+  The result was tedious, error-prone, and impossible to maintain. Every token
+  was an independent decision. If you changed the base background color, you had
+  to chase through hundreds of related tokens &mdash; hover states, pressed states,
+  selected states &mdash; to keep everything consistent. Porting a single theme took
+  hours. Porting twenty was unthinkable.
+</p>
+
+<h3 id="v2-approach">The v2 Approach: Semantic Palette Roles</h3>
+
+<p>
+  The insight from the analysis phase (Section 2) was that Fluent UI tokens aren&rsquo;t
+  random. They follow a structured hierarchy: five background layers, five foreground
+  levels, brand colors with interaction states, status colors, strokes. Instead of
+  mapping each token individually, we can define a <strong>palette</strong> with ~25
+  semantic roles and let an engine map them structurally to every token.
+</p>
+
+<p>
+  A palette defines <em>what the colors mean</em>, not which token gets which hex
+  value. The mapping engine knows the structure of Fluent UI and assigns each token
+  to the correct palette role automatically.
+</p>
+
+<h3 id="palette-format">The Palette Definition Format</h3>
+
+<p>
+  Every palette is a JavaScript object with these semantic groups:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Group</th>
+      <th>Roles</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>bg</strong> (5 levels)</td>
+      <td>deep, base, elevated, subtle, wash</td>
+      <td>Surface hierarchy from darkest inset to lightest wash</td>
+    </tr>
+    <tr>
+      <td><strong>fg</strong> (5 levels)</td>
+      <td>emphasis, primary, muted, subtle, faint</td>
+      <td>Text from bright headings to disabled placeholders</td>
+    </tr>
+    <tr>
+      <td><strong>brand</strong> (6 shades)</td>
+      <td>primary, fg, hover, light, muted, deep</td>
+      <td>Accent/action color ramp for buttons, links, badges</td>
+    </tr>
+    <tr>
+      <td><strong>stroke</strong> (3 levels)</td>
+      <td>default, muted, subtle</td>
+      <td>Borders and dividers from prominent to invisible</td>
+    </tr>
+    <tr>
+      <td><strong>status</strong></td>
+      <td>danger, success, warning (each: fg, light, bg, bgDeep)</td>
+      <td>Semantic status colors with foreground and background variants</td>
+    </tr>
+    <tr>
+      <td><strong>accents</strong></td>
+      <td>purple, teal, orange (each: fg, light, bg)</td>
+      <td>Additional accent colors for palette variety</td>
+    </tr>
+    <tr>
+      <td><strong>special</strong></td>
+      <td>overlay, scrollbar, titleBar, titleBarBorder, myMessageBg</td>
+      <td>One-off values for specific UI elements</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Here&rsquo;s what the Atom One Dark palette looks like in practice:
+</p>
+
+<pre><code class="language-javascript">// From port-theme.js — Atom One Dark palette definition
+"atom-one-dark": {
+  label: "Atom One Dark",
+  credit: "One Dark Pro: https://marketplace.visualstudio.com/...",
+
+  // ── Surface hierarchy (darkest → lightest) ──
+  bg: {
+    deep:     "#1b1f23",  // Deepest inset (panel bg, status bar)
+    base:     "#21252b",  // Primary canvas (editor bg, sidebar)
+    elevated: "#282c34",  // Elevated surface (cards, hover, content)
+    subtle:   "#2c313a",  // Subtle elevation (selected items)
+    wash:     "#3e4451",  // Wash / muted border fill
+  },
+
+  // ── Foreground ramp (brightest → dimmest) ──
+  fg: {
+    emphasis: "#d7dae0",  // Bright (headings, hover text)
+    primary:  "#abb2bf",  // Default text
+    muted:    "#7f848e",  // Secondary / muted text
+    subtle:   "#636d83",  // Tertiary text
+    faint:    "#5c6370",  // Disabled / faintest
+  },
+
+  // ── Brand / accent ──
+  brand: {
+    primary:  "#528bff",  // Button bg, primary action
+    fg:       "#61afef",  // Accent foreground, links
+    hover:    "#74a7e0",  // Brand hover
+    light:    "#82c4f8",  // Light accent
+    muted:    "#2d4a7a",  // Muted brand bg (badge)
+    deep:     "#1e3460",  // Deepest brand bg
+  },
+
+  // ── Status, accents, special omitted for brevity ──
+}</code></pre>
+
+<p>
+  Notice the structure: each group provides a <em>ramp</em> of related colors. The
+  background group goes from deep (darkest) to wash (lightest). The foreground group
+  goes from emphasis (brightest) to faint (dimmest). This mirrors the layer hierarchy
+  that Fluent UI expects.
+</p>
+
+<h3 id="build-token-map">buildTokenMap(): Structural Mapping</h3>
+
+<p>
+  The <code>buildTokenMap()</code> function takes a palette and maps it to every
+  Fluent UI token. Rather than a lookup table, it&rsquo;s a series of explicit
+  assignments that encode the <em>semantics</em> of each token:
+</p>
+
+<pre><code class="language-javascript">// From port-theme.js — the mapping engine
+function buildTokenMap(palette, observedTokens) {
+  const P = palette;
+  const map = {};
+  function set(token, value) { map[token] = value; }
+
+  // ── Backgrounds ──
+  // Background1 = primary canvas
+  set("--colorNeutralBackground1",         P.bg.base);
+  set("--colorNeutralBackground1Hover",    P.bg.elevated);
+  set("--colorNeutralBackground1Pressed",  P.bg.deep);
+  set("--colorNeutralBackground1Selected", P.bg.elevated);
+
+  // Background2 = deeper insets (sidebar, panel)
+  set("--colorNeutralBackground2",         P.bg.deep);
+  set("--colorNeutralBackground2Hover",    P.bg.base);
+  set("--colorNeutralBackground2Pressed",  darken(P.bg.deep, 0.02));
+  set("--colorNeutralBackground2Selected", P.bg.base);
+
+  // Background3-5: progressively elevated surfaces
+  set("--colorNeutralBackground3",         P.bg.elevated);
+  set("--colorNeutralBackground5",         P.bg.subtle);
+
+  // ── Foregrounds ──
+  set("--colorNeutralForeground1",         P.fg.primary);
+  set("--colorNeutralForeground1Hover",    P.fg.emphasis);
+  set("--colorNeutralForeground2",         P.fg.muted);
+  set("--colorNeutralForeground3",         P.fg.subtle);
+  set("--colorNeutralForegroundDisabled",  P.fg.faint);
+
+  // ... ~400 more mappings following the same pattern
+}</code></pre>
+
+<h3 id="interaction-states">Interaction State Generation</h3>
+
+<p>
+  A key insight from the analysis phase: Fluent UI generates hover, pressed, and
+  selected states by shifting brightness relative to a base color. In light mode,
+  hover <em>darkens</em> slightly; pressed darkens more. In dark mode, the pattern
+  is the same but adapted for dark surfaces.
+</p>
+
+<p>
+  Instead of requiring the palette author to define every interaction state, the
+  mapping engine generates them automatically using <code>lighten()</code> and
+  <code>darken()</code> functions:
+</p>
+
+<pre><code class="language-javascript">// Interaction states are derived from the base color
+set("--colorNeutralBackground1",         P.bg.base);
+set("--colorNeutralBackground1Hover",    P.bg.elevated);    // one step lighter
+set("--colorNeutralBackground1Pressed",  P.bg.deep);        // one step darker
+set("--colorNeutralBackground1Selected", P.bg.elevated);    // same as hover
+
+// For brand colors, we lighten/darken from the primary
+set("--colorBrandBackground",            P.brand.primary);
+set("--colorBrandBackgroundHover",        P.brand.hover);
+set("--colorBrandBackgroundPressed",      darken(P.brand.primary, 0.05));
+set("--colorBrandBackgroundSelected",     P.brand.hover);</code></pre>
+
+<p>
+  This means the palette author defines ~25 base colors, and the engine produces
+  400+ token assignments with consistent, systematically-derived interaction states.
+</p>
+
+<div class="callout callout-design">
+  <div class="callout-title">Why Not Just Calculate Everything?</div>
+  <p>
+    You might wonder: why not compute every palette role from a single base color?
+    Because good themes aren&rsquo;t uniform gradients. Atom One Dark&rsquo;s background
+    levels aren&rsquo;t evenly spaced &mdash; the jump from <code>#1b1f23</code> to
+    <code>#21252b</code> is different from <code>#21252b</code> to <code>#282c34</code>.
+    Each step is tuned for the theme&rsquo;s visual character. The palette system
+    preserves this intentional spacing while still automating the 400-token expansion.
+  </p>
+</div>
+
+<h3 id="vscode-color-keys">Identifying VS Code Theme Colors</h3>
+
+<p>
+  VS Code themes use a <code>colors</code> object in their JSON files that maps
+  named &ldquo;color keys&rdquo; to hex values. These keys describe what each color
+  is <em>for</em>: <code>editor.background</code> is the editor&rsquo;s background,
+  <code>sideBar.background</code> is the sidebar, <code>textLink.foreground</code>
+  is the link color.
+</p>
+
+<p>
+  The auto-extraction maps these VS Code keys to our palette roles:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>VS Code Color Key</th>
+      <th>Palette Role</th>
+      <th>Rationale</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>editor.background</code></td>
+      <td>bg.deep</td>
+      <td>Deepest surface in the editor</td>
+    </tr>
+    <tr>
+      <td><code>sideBar.background</code></td>
+      <td>bg.base</td>
+      <td>Primary canvas (slightly lighter)</td>
+    </tr>
+    <tr>
+      <td><code>editorWidget.background</code></td>
+      <td>bg.elevated</td>
+      <td>Popups, menus, dropdowns</td>
+    </tr>
+    <tr>
+      <td><code>list.hoverBackground</code></td>
+      <td>bg.subtle</td>
+      <td>Hover highlight</td>
+    </tr>
+    <tr>
+      <td><code>editorGroup.border</code></td>
+      <td>bg.wash</td>
+      <td>Borders and separators</td>
+    </tr>
+    <tr>
+      <td><code>editor.foreground</code></td>
+      <td>fg.primary</td>
+      <td>Default text color</td>
+    </tr>
+    <tr>
+      <td><code>descriptionForeground</code></td>
+      <td>fg.muted</td>
+      <td>Secondary text</td>
+    </tr>
+    <tr>
+      <td><code>disabledForeground</code></td>
+      <td>fg.faint</td>
+      <td>Disabled / placeholder text</td>
+    </tr>
+    <tr>
+      <td><code>button.background</code></td>
+      <td>brand.primary</td>
+      <td>Primary action button</td>
+    </tr>
+    <tr>
+      <td><code>textLink.foreground</code></td>
+      <td>brand.fg</td>
+      <td>Link / accent foreground</td>
+    </tr>
+    <tr>
+      <td><code>errorForeground</code></td>
+      <td>danger.fg</td>
+      <td>Error / danger indicator</td>
+    </tr>
+    <tr>
+      <td><code>editorGutter.addedBackground</code></td>
+      <td>success.fg</td>
+      <td>Success / added indicator</td>
+    </tr>
+    <tr>
+      <td><code>list.warningForeground</code></td>
+      <td>warning.fg</td>
+      <td>Warning indicator</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Not every VS Code theme defines every key. The extraction function 
+  cascades through fallbacks: if <code>sideBar.background</code> is missing,
+  try <code>activityBar.background</code>, then derive from
+  <code>editor.background</code> with a slight lightening.
+</p>
+
+<h3 id="extract-palette">Auto-Palette Extraction: extractPalette()</h3>
+
+<p>
+  The <code>extractPalette()</code> function in <code>port-all.js</code> reads a
+  VS Code theme&rsquo;s <code>colors</code> object and maps it to our palette format
+  automatically:
+</p>
+
+<pre><code class="language-javascript">// From port-all.js — auto-extraction of palette from VS Code colors
+function extractPalette(colors, tokenColors, label, isDark) {
+  const c = (key) =&gt; stripAlpha(colors[key]) || null;
+
+  // ── Dark theme extraction ──
+  const bgDeep     = c("editor.background") || "#1e1e1e";
+  const bgBase     = c("sideBar.background") || lighten(bgDeep, 0.03);
+  const bgElevated = c("editorWidget.background") || lighten(bgBase, 0.03);
+  const bgSubtle   = c("list.hoverBackground") || lighten(bgElevated, 0.02);
+  const bgWash     = c("editorGroup.border") || lighten(bgSubtle, 0.03);
+
+  // Foreground ramp
+  const fgEmphasis = c("list.activeSelectionForeground") || "#e0e0e0";
+  const fgPrimary  = c("editor.foreground") || "#cccccc";
+  const fgMuted    = c("descriptionForeground") || "#8c8c8c";
+
+  // Brand / accent
+  const brandPrimary = c("button.background") || "#007acc";
+  const brandFg      = c("textLink.foreground") || lighten(brandPrimary, 0.10);
+
+  // Status — from git decoration and error colors
+  const dangerFg  = c("errorForeground") || "#f48771";
+  const successFg = c("editorGutter.addedBackground") || "#73c991";
+  const warningFg = c("list.warningForeground") || "#e5c07b";
+
+  // ... assemble into palette object
+}</code></pre>
+
+<p>
+  The function also handles a subtle edge case: some themes have
+  <code>editor.background</code> lighter than <code>sideBar.background</code>
+  (e.g., Dark Modern). The extractor detects this by comparing brightness values
+  and swaps them so <code>bg.deep</code> is always the darkest surface.
+</p>
+
+<h3 id="accent-extraction">Accent Color Extraction from Syntax Tokens</h3>
+
+<p>
+  Beyond the <code>colors</code> object, VS Code themes also define
+  <code>tokenColors</code> &mdash; syntax highlighting rules that assign colors
+  to language constructs. The extractor mines these for accent colors:
+</p>
+
+<pre><code class="language-javascript">// Extract accent colors by classifying syntax token foregrounds by hue
+let purpleFg = null, tealFg = null, orangeFg = null;
+for (const tc of tokenColors) {
+  const fg = tc.settings?.foreground;
+  if (!fg) continue;
+  const parsed = parseHexColor(fg);
+  if (!parsed) continue;
+  const hsl = rgbToHSL(parsed.r, parsed.g, parsed.b);
+
+  // Classify by hue range
+  if (!purpleFg &amp;&amp; hsl.h &gt; 250 &amp;&amp; hsl.h &lt; 310 &amp;&amp; hsl.s &gt; 0.3)
+    purpleFg = fg;
+  else if (!tealFg &amp;&amp; hsl.h &gt; 160 &amp;&amp; hsl.h &lt; 210 &amp;&amp; hsl.s &gt; 0.3)
+    tealFg = fg;
+  else if (!orangeFg &amp;&amp; hsl.h &gt; 15 &amp;&amp; hsl.h &lt; 45 &amp;&amp; hsl.s &gt; 0.3)
+    orangeFg = fg;
+}</code></pre>
+
+<p>
+  This scans through every syntax color, converts to HSL, and picks the first color
+  that falls in the purple (250&deg;&ndash;310&deg;), teal (160&deg;&ndash;210&deg;), 
+  or orange (15&deg;&ndash;45&deg;) hue range with reasonable saturation. These become
+  the palette&rsquo;s accent colors &mdash; used for notification dots, presence
+  indicators, and other UI elements that need distinct hues.
+</p>
+
+<h3 id="jsonc-parsing">JSONC Parsing: The Naive Regex Trap</h3>
+
+<p>
+  VS Code theme files use <strong>JSONC</strong> &mdash; JSON with Comments. Both
+  <code>//</code> line comments and <code>/* */</code> block comments are legal.
+  The naive approach is a regex:
+</p>
+
+<pre><code class="language-javascript">// ❌ The naive approach — fails on edge cases
+const clean = raw
+  .replace(/\/\/.*/g, '')          // strip line comments
+  .replace(/\/\*[\s\S]*?\*\//g, '');  // strip block comments</code></pre>
+
+<p>
+  This works until a theme includes a comment-like pattern inside a string:
+</p>
+
+<pre><code class="language-json">{
+  "name": "// Heading",
+  "foreground": "#ff0000"
+}</code></pre>
+
+<p>
+  The regex doesn&rsquo;t know it&rsquo;s inside a string. It strips
+  <code>// Heading"</code> and the resulting JSON is broken. This is a well-known
+  limitation: you can&rsquo;t parse context-free grammars with regular expressions.
+</p>
+
+<h3 id="strip-jsonc">stripJSONC(): Character-by-Character Walking</h3>
+
+<p>
+  The solution is a simple state machine that walks the input character by character,
+  tracking whether we&rsquo;re inside a string:
+</p>
+
+<pre><code class="language-javascript">// From port-all.js — string-aware JSONC comment stripping
+function stripJSONC(text) {
+  let result = "";
+  let i = 0;
+  let inString = false;
+  let escape = false;
+
+  while (i &lt; text.length) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (inString) {
+      result += ch;
+      if (escape) { escape = false; }
+      else if (ch === "\\") { escape = true; }
+      else if (ch === '"') { inString = false; }
+      i++;
+    } else if (ch === '"') {
+      inString = true;
+      result += ch;
+      i++;
+    } else if (ch === "/" &amp;&amp; next === "/") {
+      // Line comment — skip to end of line
+      i += 2;
+      while (i &lt; text.length &amp;&amp; text[i] !== "\n") i++;
+    } else if (ch === "/" &amp;&amp; next === "*") {
+      // Block comment — skip to */
+      i += 2;
+      while (i &lt; text.length &amp;&amp;
+             !(text[i] === "*" &amp;&amp; text[i + 1] === "/")) i++;
+      i += 2;  // skip closing */
+    } else {
+      result += ch;
+      i++;
+    }
+  }
+  // Also strip trailing commas before } or ]
+  return result.replace(/,\s*([}\]])/g, "$1");
+}</code></pre>
+
+<div class="callout callout-tip">
+  <div class="callout-title">Why Not Use a Library?</div>
+  <p>
+    You could use <code>json5</code>, <code>jsonc-parser</code>, or VS Code&rsquo;s
+    own JSONC parser. But for this use case &mdash; stripping comments so
+    <code>JSON.parse()</code> works &mdash; the 30-line state machine is simpler,
+    has zero dependencies, and handles every case we&rsquo;ve encountered in the
+    wild across hundreds of theme files. The trailing-comma cleanup at the end
+    handles the other common JSONC extension.
+  </p>
+</div>
+
+<h3 id="include-inheritance">Theme Inheritance: Resolving Include Chains</h3>
+
+<p>
+  VS Code themes can inherit from other themes via an <code>include</code> field.
+  For example, Dark+ includes the base dark theme, which itself might include a
+  default color set. The loader resolves this recursively:
+</p>
+
+<pre><code class="language-javascript">// From port-all.js — resolve theme inheritance
+function loadThemeColors(themePath, depth = 0) {
+  if (depth &gt; 5) return {};  // prevent infinite recursion
+  if (!fs.existsSync(themePath)) return {};
+
+  const raw = fs.readFileSync(themePath, "utf8");
+  const clean = stripJSONC(raw);
+  const theme = JSON.parse(clean);
+
+  // Resolve `include` inheritance
+  let baseColors = {};
+  if (theme.include) {
+    const includePath = path.resolve(
+      path.dirname(themePath), theme.include
+    );
+    baseColors = loadThemeColors(includePath, depth + 1);
+  }
+
+  // Overlay this theme's colors on top of the base
+  return { ...baseColors, ...(theme.colors || {}) };
+}</code></pre>
+
+<p>
+  The function uses JavaScript&rsquo;s spread operator to overlay: the child
+  theme&rsquo;s colors win over the parent&rsquo;s. The recursion depth limit of 5
+  prevents infinite loops from circular includes (which shouldn&rsquo;t happen in
+  practice, but defensive coding is cheap).
+</p>
+
+<h3 id="batch-porting">Batch Porting with port-all.js</h3>
+
+<p>
+  The <code>port-all.js</code> script ties everything together. It discovers every
+  installed VS Code theme, extracts a palette from each, and runs the porter engine:
+</p>
+
+<pre><code class="language-javascript">// From port-all.js — theme discovery
+function discoverThemes() {
+  const builtinDir = findVSCodeInstall();  // built-in extensions
+  const userDir = path.join(
+    process.env.USERPROFILE, ".vscode", "extensions"
+  );
+
+  const themes = [];
+  function scanDir(dir, source) {
+    if (!fs.existsSync(dir)) return;
+    for (const ext of fs.readdirSync(dir)) {
+      const pkgPath = path.join(dir, ext, "package.json");
+      if (!fs.existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+
+      // Resolve localized labels (e.g. "%dark_plus%" → "Dark+")
+      resolveLabels(path.join(dir, ext), pkg);
+
+      for (const t of pkg.contributes?.themes || []) {
+        themes.push({
+          label: t.label,
+          uiTheme: t.uiTheme || "vs-dark",
+          path: path.join(dir, ext, t.path),
+          source,
+        });
+      }
+    }
+  }
+  scanDir(builtinDir, "builtin");
+  scanDir(userDir, "installed");
+  return themes;
+}</code></pre>
+
+<p>
+  A subtle detail: VS Code localizes theme labels using <code>package.nls.json</code>.
+  The theme&rsquo;s <code>label</code> field might be <code>%dark_vs%</code> &mdash; a
+  localization key, not the actual name. <code>resolveLabels()</code> reads the NLS
+  file and replaces these keys with their English labels so the output filenames are
+  human-readable.
+</p>
+
+<h3 id="contrast-verification">WCAG Contrast Verification</h3>
+
+<p>
+  After mapping all tokens, the engine verifies that critical text/background pairs
+  meet WCAG AA contrast requirements (minimum 4.5:1 for normal text). The porter
+  uses the same <code>contrastRatio()</code> and <code>relativeLuminance()</code>
+  functions from the analysis phase:
+</p>
+
+<pre><code class="language-javascript">// Contrast check — WCAG AA requires 4.5:1 for normal text
+function contrastRatio(c1, c2) {
+  const l1 = relativeLuminance(c1);
+  const l2 = relativeLuminance(c2);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
+// Check foreground1 against background1
+const fg = parseColor(palette.fg.primary);
+const bg = parseColor(palette.bg.base);
+const ratio = contrastRatio(fg, bg);
+if (ratio &lt; 4.5) {
+  console.warn(`  ⚠ Low contrast: ${ratio.toFixed(2)}:1`);
+}</code></pre>
+
+<p>
+  All 20+ auto-ported themes pass WCAG AA for their primary text/background
+  combination. This isn&rsquo;t guaranteed by the extraction &mdash; it works because
+  VS Code themes are designed for code readability, which demands high contrast.
+</p>
+
+<h3 id="results">Results: 20+ Themes, Automatically</h3>
+
+<p>
+  Running <code>node port-all.js</code> discovers every dark theme installed in
+  VS Code and produces a ready-to-inject CSS file for each. The output on a typical
+  developer machine:
+</p>
+
+<div class="diagram">
+$ node port-all.js
+
+Discovering VS Code themes...
+  Built-in: C:\...\Microsoft VS Code\resources\app\extensions
+  User:     C:\Users\...\.vscode\extensions
+  Found 48 themes (31 dark, 12 light, 5 high contrast)
+
+Porting dark themes...
+  ✓ Atom One Dark                    → themes/atom-one-dark.css
+  ✓ Dark (Visual Studio)             → themes/dark-visual-studio.css
+  ✓ Dark+                            → themes/dark.css
+  ✓ Dark High Contrast               → themes/dark-high-contrast.css
+  ✓ Dark Modern                      → themes/dark-modern.css
+  ✓ Default Dark 2026                → themes/default-dark-2026.css
+  ✓ GitHub Dark                      → themes/github-dark.css
+  ✓ GitHub Dark Dimmed               → themes/github-dark-dimmed.css
+  ✓ Kimbie Dark                      → themes/kimbie-dark.css
+  ✓ Monokai                          → themes/monokai.css
+  ✓ One Monokai                      → themes/one-monokai.css
+  ✓ Red                              → themes/red.css
+  ✓ Solarized Dark                   → themes/solarized-dark.css
+  ✓ Tomorrow Night Blue              → themes/tomorrow-night-blue.css
+  ...
+
+Ported 20 themes. All passing WCAG AA contrast.
+</div>
+
+<p>
+  Each output file contains ~600 lines of CSS: the full token map plus hardcoded
+  overrides (covered in the next section). Adding a new theme is now a matter of
+  installing it in VS Code and re-running the script &mdash; or defining a 30-color
+  palette object manually for themes that don&rsquo;t come from VS Code.
+</p>
+
+<div class="callout callout-arch">
+  <div class="callout-title">The Power of Structure</div>
+  <p>
+    The palette system transforms theme porting from an O(n) problem (n = number of
+    tokens) to an O(1) problem (define ~25 colors). This is possible because the
+    analysis phase (Section 2) revealed the <em>structure</em> of Fluent UI&rsquo;s
+    token system. Without understanding the layer hierarchy, the foreground ramp
+    pattern, and the interaction state derivation, you&rsquo;d still be assigning
+    tokens one by one.
+  </p>
+</div>
+
+<h3 id="section4-summary">Summary</h3>
+
+<ul>
+  <li>v1 required manually assigning every token; v2 defines ~25 palette roles and maps structurally</li>
+  <li>The palette format captures background layers, foreground ramps, brand colors, status, and accents</li>
+  <li><code>buildTokenMap()</code> maps palette roles to 400+ tokens, generating interaction states automatically</li>
+  <li>VS Code color keys map to palette roles via a cascading fallback strategy</li>
+  <li><code>extractPalette()</code> auto-extracts palettes from VS Code theme JSON files</li>
+  <li><code>stripJSONC()</code> handles JSONC comments with a string-aware state machine (not regex)</li>
+  <li>Theme inheritance is resolved recursively, with child colors overlaying parent colors</li>
+  <li><code>port-all.js</code> batch-ports all installed VS Code themes, resolving localized labels</li>
+  <li>All ported themes pass WCAG AA contrast verification</li>
+</ul>
+
+<p>
+  The palette-to-token mapping produces clean, consistent themes &mdash; but tokens
+  alone aren&rsquo;t enough. The next section covers why some Teams elements resist
+  token overrides and how hardcoded CSS selectors fill the gaps.
+</p>
+
+<div class="section-nav">
+  <a href="/projects/theme-injector/tutorial/section03">&larr; Previous: The Dimming Engine</a>
+  <a href="/projects/theme-injector/tutorial/section05">Next: Hardcoded Overrides &rarr;</a>
+</div>

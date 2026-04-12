@@ -1,0 +1,508 @@
+---
+layout: themeinjector
+title: "Section 1: Observation — Extracting the Color System"
+permalink: /projects/theme-injector/tutorial/section01
+---
+
+<h2 id="observation"><span class="section-number">1.</span> Observation &mdash; Extracting the Color System</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  Don&rsquo;t guess what Teams uses &mdash; measure it. Extracting every design token,
+  computed color, and DOM landmark from a running instance.
+</p>
+
+<p>
+  <span class="tag tag-cdp">CDP</span>
+  <span class="tag tag-design">Design</span>
+</p>
+
+<h3 id="observation-philosophy">The Observation-First Philosophy</h3>
+
+<p>
+  It&rsquo;s tempting to open the Fluent UI documentation, look up token names, and
+  start guessing values. Don&rsquo;t. Documentation describes intent; the running app
+  reveals reality. Token names get renamed between Fluent UI versions. Some documented
+  tokens aren&rsquo;t used. Some undocumented ones are critical. The only reliable source
+  of truth is the live DOM of a running Teams instance.
+</p>
+
+<p>
+  The observation pipeline connects to Teams via CDP and programmatically extracts
+  everything we need: every CSS custom property, every computed color, and the actual
+  DOM selectors used by the UI. This data becomes the foundation for analysis
+  (Section 2) and theme generation (Section 3).
+</p>
+
+<h3 id="extracting-fluent-tokens">Extracting Fluent UI Design Tokens</h3>
+
+<p>
+  All of Teams&rsquo; design tokens live as CSS custom properties on the
+  <code>.fui-FluentProvider</code> element. The observation script reads every one of
+  them by iterating the element&rsquo;s computed style:
+</p>
+
+<pre><code class="language-javascript">// From observe.js — extracting all CSS custom properties
+const tokenResult = await Runtime.evaluate({
+  expression: `
+    (() => {
+      const provider = document.querySelector('.fui-FluentProvider');
+      if (!provider) return JSON.stringify({
+        error: 'No .fui-FluentProvider element found'
+      });
+
+      const cs = getComputedStyle(provider);
+      const tokens = {};
+
+      for (let i = 0; i &lt; cs.length; i++) {
+        const prop = cs[i];
+        if (prop.startsWith('--')) {
+          tokens[prop] = cs.getPropertyValue(prop).trim();
+        }
+      }
+
+      return JSON.stringify(tokens);
+    })()
+  `,
+  returnByValue: true,
+});
+
+const tokens = JSON.parse(tokenResult.result.value);</code></pre>
+
+<div class="callout callout-cdp">
+  <div class="callout-title">CDP Concept</div>
+  <p>
+    <code>Runtime.evaluate()</code> executes a JavaScript expression in the page&rsquo;s
+    main context and returns the result. The <code>returnByValue: true</code> option
+    serializes the return value so we get the actual data rather than a remote object
+    reference. Since we&rsquo;re returning a JSON string, we parse it on the Node.js side.
+  </p>
+</div>
+
+<p>
+  The result: <strong>498 CSS custom properties</strong>. These aren&rsquo;t just colors &mdash;
+  the token set includes spacing, typography, borders, shadows, corner radii, and motion
+  timing. Here&rsquo;s a sampling of what comes back:
+</p>
+
+<pre><code class="language-json">{
+  "--colorNeutralBackground1": "#ffffff",
+  "--colorNeutralBackground2": "#fafafa",
+  "--colorNeutralBackground3": "#f5f5f5",
+  "--colorNeutralForeground1": "#242424",
+  "--colorNeutralForeground2": "#424242",
+  "--colorBrandBackground": "#5b5fc7",
+  "--colorBrandForeground1": "#5b5fc7",
+  "--colorPaletteRedBackground3": "#d13438",
+  "--colorStatusDangerForeground1": "#b10e1c",
+  "--borderRadiusMedium": "4px",
+  "--fontSizeBase300": "14px",
+  "--fontWeightSemibold": "600",
+  "--durationFast": "150ms",
+  "--shadow4": "0 0 2px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.14)"
+}</code></pre>
+
+<h3 id="root-body-tokens">Tokens Beyond FluentProvider</h3>
+
+<p>
+  The FluentProvider isn&rsquo;t the only source of custom properties. Some older Teams
+  components use <code>:root</code> or <code>document.body</code> properties. The
+  observation script captures these separately to ensure complete coverage:
+</p>
+
+<pre><code class="language-javascript">// From observe.js — reading :root and body properties
+const rootResult = await Runtime.evaluate({
+  expression: `
+    (() => {
+      const result = { root: {}, body: {} };
+      const rootStyles = getComputedStyle(document.documentElement);
+      const bodyStyles = getComputedStyle(document.body);
+
+      for (let i = 0; i &lt; rootStyles.length; i++) {
+        const prop = rootStyles[i];
+        if (prop.startsWith('--')) {
+          result.root[prop] = rootStyles.getPropertyValue(prop).trim();
+        }
+      }
+
+      for (let i = 0; i &lt; bodyStyles.length; i++) {
+        const prop = bodyStyles[i];
+        if (prop.startsWith('--')) {
+          result.body[prop] = bodyStyles.getPropertyValue(prop).trim();
+        }
+      }
+
+      return JSON.stringify(result);
+    })()
+  `,
+  returnByValue: true,
+});</code></pre>
+
+<p>
+  In practice, the FluentProvider tokens dominate. The <code>:root</code> and body
+  properties provide a handful of additional values, mostly legacy or Teams-specific
+  tokens that predate the Fluent v9 migration.
+</p>
+
+<h3 id="exploring-the-dom">Exploring the DOM: Finding the Real Selectors</h3>
+
+<p>
+  To sample computed colors from specific UI regions, we need CSS selectors that
+  actually match elements in Teams. This turned out to be harder than expected.
+</p>
+
+<div class="callout callout-tip">
+  <div class="callout-title">Tip</div>
+  <p>
+    Don&rsquo;t guess selector names. The original version of the observation script
+    used selectors like <code>[data-tid="left-rail"]</code> and
+    <code>[data-tid="chat-list"]</code> &mdash; names that seemed logical but
+    didn&rsquo;t exist in the actual DOM. The <code>explore-dom.js</code> tool was
+    built specifically to discover what selectors Teams really uses.
+  </p>
+</div>
+
+<p>
+  The <code>explore-dom.js</code> tool walks the DOM tree from <code>&lt;body&gt;</code>
+  down four levels, recording every element&rsquo;s tag name, classes, <code>data-tid</code>,
+  <code>data-testid</code>, <code>role</code>, and <code>aria-label</code> attributes:
+</p>
+
+<pre><code class="language-javascript">// From explore-dom.js — recursive DOM tree walker
+function describeEl(el, depth, maxDepth) {
+  if (depth > maxDepth) return null;
+  const tag = el.tagName?.toLowerCase() || '?';
+  const id = el.id ? '#' + el.id : '';
+  const classes = el.className && typeof el.className === 'string'
+    ? '.' + el.className.trim().split(/\s+/).slice(0, 5).join('.')
+    : '';
+  const role = el.getAttribute?.('role') || '';
+  const dataTid = el.getAttribute?.('data-tid') || '';
+  const dataTestid = el.getAttribute?.('data-testid') || '';
+  const ariaLabel = el.getAttribute?.('aria-label') || '';
+
+  // Collect all data-* attributes
+  const dataAttrs = {};
+  if (el.attributes) {
+    for (const attr of el.attributes) {
+      if (attr.name.startsWith('data-')) {
+        dataAttrs[attr.name] = attr.value?.substring(0, 80) || '';
+      }
+    }
+  }
+
+  const info = {
+    tag, selector: tag + id + classes,
+    role, dataTid, dataTestid, ariaLabel,
+    dataAttrs, childCount: el.children?.length || 0,
+  };
+
+  // Recurse into children
+  if (depth &lt; maxDepth && el.children) {
+    const children = [];
+    for (const child of el.children) {
+      const desc = describeEl(child, depth + 1, maxDepth);
+      if (desc) children.push(desc);
+    }
+    if (children.length > 0) info.children = children;
+  }
+
+  return info;
+}</code></pre>
+
+<p>
+  It also searches specifically for all elements with <code>data-tid</code> attributes
+  and records their bounding rectangles. This reveals the actual naming scheme Teams uses:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Guessed Name</th>
+      <th>Actual <code>data-tid</code></th>
+      <th>UI Element</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>left-rail</code></td>
+      <td><code>app-layout-area--mid-nav</code></td>
+      <td>The conversation list panel</td>
+    </tr>
+    <tr>
+      <td><code>chat-list</code></td>
+      <td><code>simple-collab-dnd-rail</code></td>
+      <td>The draggable chat tree</td>
+    </tr>
+    <tr>
+      <td><code>nav-bar</code></td>
+      <td><code>app-bar-wrapper</code></td>
+      <td>The icon rail on the far left</td>
+    </tr>
+    <tr>
+      <td><code>header</code></td>
+      <td><code>entity-header</code></td>
+      <td>The channel/chat header bar</td>
+    </tr>
+    <tr>
+      <td><code>compose</code></td>
+      <td><code>ckeditor</code></td>
+      <td>The message compose box</td>
+    </tr>
+    <tr>
+      <td><code>settings-btn</code></td>
+      <td><code>more-options-header</code></td>
+      <td>The &ldquo;&hellip;&rdquo; settings menu</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Some elements use <code>data-testid</code> instead of <code>data-tid</code>
+  (notably the collab rail components), and some use ARIA roles. The explorer captures
+  all of these patterns, letting us build a comprehensive selector list.
+</p>
+
+<h3 id="sampling-computed-colors">Sampling Computed Colors from UI Regions</h3>
+
+<p>
+  With correct selectors in hand, the observation script samples computed style
+  properties from ~35 UI regions. For each region, it reads color-related CSS properties
+  and records the actual rendered values:
+</p>
+
+<pre><code class="language-javascript">// From observe.js — sampling computed colors from UI regions
+const UI_REGIONS = [
+  { selector: ".fui-FluentProvider", name: "FluentProvider (root)" },
+  { selector: '[data-tid="app-layout-area--title-bar"]', name: "Title Bar Area" },
+  { selector: '[data-tid="app-layout-area--nav"]', name: "Nav Area (App Bar)" },
+  { selector: '[data-tid="app-layout-area--mid-nav"]', name: "Mid-Nav (Left Rail)" },
+  { selector: '[data-testid="simple-collab-rail"]', name: "Collab Rail (Chat List)" },
+  { selector: '[data-tid="app-layout-area--main"]', name: "Main Content Area" },
+  { selector: '[data-tid="message-pane-body"]', name: "Message Pane Body" },
+  { selector: '[data-tid="ckeditor"]', name: "Message Editor" },
+  { selector: ".fui-Button", name: "Button (first)" },
+  { selector: ".fui-TreeItem", name: "Tree Item (first)" },
+  // ... 25 more regions ...
+];
+
+const COLOR_PROPERTIES = [
+  "color", "background-color", "border-color",
+  "border-top-color", "border-bottom-color",
+  "box-shadow", "text-shadow", "caret-color",
+  "fill", "stroke",
+  // ... and more ...
+];</code></pre>
+
+<p>
+  For each region, the script queries the element, reads its computed style for every
+  color-related property, and also captures any inline style declarations that might
+  override the computed values. This gives us a ground truth map of what color appears
+  where in the UI.
+</p>
+
+<h3 id="stylesheet-scanning">Stylesheet Scanning: Finding var() Usage</h3>
+
+<p>
+  Beyond the FluentProvider tokens and computed colors, the observation script scans
+  all accessible stylesheets to build a map of which CSS properties reference which
+  <code>var()</code> tokens:
+</p>
+
+<pre><code class="language-javascript">// From observe.js — scanning stylesheets for var() references
+for (const sheet of document.styleSheets) {
+  try {
+    const rules = sheet.cssRules || sheet.rules;
+    for (const rule of rules) {
+      if (rule.style) {
+        for (let i = 0; i &lt; rule.style.length; i++) {
+          const prop = rule.style[i];
+          if (/color|background|border|shadow/i.test(prop)) {
+            const val = rule.style.getPropertyValue(prop).trim();
+            // Track var() references
+            const varMatch = val.match(/var\(--([^)]+)\)/g);
+            if (varMatch) {
+              for (const v of varMatch) {
+                const name = v.match(/var\(--(.*?)(?:,|\))/)?.[1];
+                if (name) {
+                  varReferences.get(name)?.add(prop)
+                    || varReferences.set(name, new Set([prop]));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Cross-origin stylesheet — skip silently
+  }
+}</code></pre>
+
+<p>
+  This reveals which tokens are actually <em>used</em> by the stylesheets versus which
+  tokens merely exist as properties. Some tokens are defined but never referenced in any
+  CSS rule &mdash; useful to know when deciding what to override.
+</p>
+
+<h3 id="detecting-mode">Detecting Light vs. Dark Mode</h3>
+
+<p>
+  Before generating a theme, we need to know whether Teams is currently in Light or Dark
+  mode. The observation script determines this by analyzing the luminance of the
+  primary background token:
+</p>
+
+<pre><code class="language-javascript">// From observe.js — mode detection via token luminance
+const bg1 = cs.getPropertyValue('--colorNeutralBackground1').trim();
+const fg1 = cs.getPropertyValue('--colorNeutralForeground1').trim();
+
+function parseLuminance(color) {
+  const temp = document.createElement('div');
+  temp.style.color = color;
+  document.body.appendChild(temp);
+  const computed = getComputedStyle(temp).color;
+  document.body.removeChild(temp);
+  const match = computed.match(/\d+/g);
+  if (!match) return 0.5;
+  const [r, g, b] = match.map(Number);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+const bgLum = parseLuminance(bg1);
+const mode = bgLum > 0.5 ? 'light' : 'dark';</code></pre>
+
+<div class="callout callout-arch">
+  <div class="callout-title">Architecture Decision</div>
+  <p>
+    Why not just read <code>localStorage.getItem('tmp.desktopTheme')</code>?
+    Teams stores its native theme preference there, and it <em>isn&rsquo;t</em>
+    affected by injected CSS. The problem: this value can become stale. If the
+    user changes themes via Settings and Teams doesn&rsquo;t flush, the localStorage
+    value may not reflect reality. The luminance approach is more reliable &mdash;
+    but it has its own issue: if a theme is already injected, the luminance reflects
+    the <em>injected</em> theme, not the native one. The injector solves this by
+    temporarily removing the injected style before sampling, then re-injecting it.
+  </p>
+</div>
+
+<h3 id="screenshots">Visual Verification with Screenshots</h3>
+
+<p>
+  The observation pipeline includes a screenshot step. Using CDP&rsquo;s
+  <code>Page.captureScreenshot</code>, it captures the full viewport and measures the
+  bounding boxes of each UI region:
+</p>
+
+<pre><code class="language-javascript">// From screenshot.js — capturing the viewport
+const { data: fullData } = await Page.captureScreenshot({ format: "png" });
+fs.writeFileSync(
+  path.join(OUTPUT_DIR, "screenshot-full.png"),
+  Buffer.from(fullData, "base64")
+);</code></pre>
+
+<p>
+  The screenshot also records each region&rsquo;s bounding rectangle by querying
+  <code>getBoundingClientRect()</code> on the discovered selectors. This data feeds
+  into the analysis step, where we can verify that our token-to-region mapping is correct
+  by comparing the token values against what&rsquo;s actually rendered.
+</p>
+
+<h3 id="observation-outputs">Observation Outputs</h3>
+
+<p>
+  The observation step produces four output files:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>File</th>
+      <th>Format</th>
+      <th>Contents</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>observed-tokens.json</code></td>
+      <td>JSON</td>
+      <td>All 498 CSS custom properties, detected mode, token metadata</td>
+    </tr>
+    <tr>
+      <td><code>observed-tokens.css</code></td>
+      <td>CSS</td>
+      <td>A reference stylesheet with all tokens as a <code>.fui-FluentProvider</code> rule</td>
+    </tr>
+    <tr>
+      <td><code>computed-colors.json</code></td>
+      <td>JSON</td>
+      <td>Computed colors from ~35 UI regions with element metadata</td>
+    </tr>
+    <tr>
+      <td><code>observation-report.txt</code></td>
+      <td>Text</td>
+      <td>Human-readable summary: token counts, mode detection, region status</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="observation-pipeline">The Observation Pipeline</h3>
+
+<div class="diagram">
+┌─────────────┐
+│ Teams (Live) │
+└──────┬──────┘
+       │ CDP: Runtime.evaluate()
+       ▼
+┌──────────────────────────────────────────────────┐
+│                  observe.js                       │
+│                                                   │
+│  1. getComputedStyle(.fui-FluentProvider)         │
+│     → 498 CSS custom properties                  │
+│                                                   │
+│  2. getComputedStyle(:root) + getComputedStyle    │
+│     (document.body) → additional properties       │
+│                                                   │
+│  3. For each UI_REGION selector:                  │
+│     → querySelector → getComputedStyle            │
+│     → 15 color properties per element             │
+│                                                   │
+│  4. Scan all document.styleSheets                 │
+│     → var(--token) reference map                  │
+│                                                   │
+│  5. Luminance analysis of --colorNeutralBg1       │
+│     → Light / Dark mode detection                 │
+└──────────────────┬───────────────────────────────┘
+                   │
+                   ▼
+        ┌─────────────────────┐
+        │   output/ directory  │
+        │                      │
+        │  observed-tokens.json│
+        │  observed-tokens.css │
+        │  computed-colors.json│
+        │  observation-report  │
+        └─────────────────────┘
+</div>
+
+<h3 id="what-we-learned">What We Learned</h3>
+
+<ul>
+  <li>Always extract from the live app &mdash; don&rsquo;t rely on documentation alone</li>
+  <li>FluentProvider holds 498 tokens spanning colors, spacing, typography, shadows, and motion</li>
+  <li>DOM exploration reveals the real selector names (data-tid, data-testid, roles)</li>
+  <li>Computed colors from UI regions validate the token-to-surface mapping</li>
+  <li>Mode detection via luminance is more reliable than localStorage &mdash; but needs the
+    &ldquo;temporarily remove injected style&rdquo; trick for accuracy</li>
+  <li>Stylesheet scanning shows which tokens are actually referenced in CSS rules</li>
+</ul>
+
+<p>
+  We now have a complete snapshot of Teams&rsquo; color system. Next, we&rsquo;ll analyze
+  this data to understand the structural relationships between tokens &mdash; the surface
+  hierarchy, interaction states, brand system, and contrast requirements that define the
+  design system.
+</p>
+
+<div class="section-nav">
+  <a href="/projects/theme-injector/tutorial/section00">&larr; Previous: The Problem &amp; the Exploit</a>
+  <a href="/projects/theme-injector/tutorial/section02">Next: Analysis &rarr;</a>
+</div>

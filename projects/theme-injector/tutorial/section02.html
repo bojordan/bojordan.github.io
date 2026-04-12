@@ -1,0 +1,593 @@
+---
+layout: themeinjector
+title: "Section 2: Analysis — Surface Hierarchy & Token Anatomy"
+permalink: /projects/theme-injector/tutorial/section02
+---
+
+<h2 id="analysis"><span class="section-number">2.</span> Analysis &mdash; Surface Hierarchy &amp; Token Anatomy</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  Parsing 498 tokens into a structural map: background layers, interaction states,
+  foreground ramps, brand colors, status semantics, and contrast requirements.
+</p>
+
+<p>
+  <span class="tag tag-design">Design</span>
+  <span class="tag tag-arch">Arch</span>
+</p>
+
+<h3 id="from-data-to-structure">From Raw Data to Design Structure</h3>
+
+<p>
+  The observation step gave us 498 token names and their values. That&rsquo;s a flat
+  list &mdash; useful for injection but opaque as a design system. To generate
+  well-behaved themes, we need to understand the <em>relationships</em> between tokens:
+  which backgrounds are meant to be layered, which foregrounds go on which surfaces,
+  which colors share an underlying value for design system compression.
+</p>
+
+<p>
+  The <code>analyze.js</code> script reads the observation data and produces a
+  structural analysis. Let&rsquo;s walk through each major finding.
+</p>
+
+<h3 id="surface-hierarchy">The Surface Hierarchy: 8 Background Layers</h3>
+
+<p>
+  Teams&rsquo; background system uses <em>numbered layers</em> to create visual depth.
+  <code>--colorNeutralBackground1</code> is the brightest (the &ldquo;paper&rdquo; surface),
+  and each subsequent number is slightly darker, pushing the layer visually behind
+  the one above it.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Token</th>
+      <th>Light Value</th>
+      <th>Brightness</th>
+      <th>Used For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td><code>--colorNeutralBackground1</code></td>
+      <td><code>#ffffff</code></td>
+      <td>1.000</td>
+      <td>Main content area, message pane</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><code>--colorNeutralBackground2</code></td>
+      <td><code>#fafafa</code></td>
+      <td>0.980</td>
+      <td>Sidebars, secondary panels</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><code>--colorNeutralBackground3</code></td>
+      <td><code>#f5f5f5</code></td>
+      <td>0.961</td>
+      <td>Cards, elevated containers</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><code>--colorNeutralBackground4</code></td>
+      <td><code>#f0f0f0</code></td>
+      <td>0.941</td>
+      <td>Nested panels, deeper insets</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td><code>--colorNeutralBackground5</code></td>
+      <td><code>#ebebeb</code></td>
+      <td>0.922</td>
+      <td>Table headers, footers</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td><code>--colorNeutralBackground6</code></td>
+      <td><code>#e6e6e6</code></td>
+      <td>0.902</td>
+      <td>Input fields, wells</td>
+    </tr>
+    <tr>
+      <td>Inverted</td>
+      <td><code>--colorNeutralBackgroundInverted</code></td>
+      <td><code>#292929</code></td>
+      <td>0.161</td>
+      <td>Tooltips, badges (dark on light)</td>
+    </tr>
+    <tr>
+      <td>Static</td>
+      <td><code>--colorNeutralBackgroundStatic</code></td>
+      <td><code>#333333</code></td>
+      <td>0.200</td>
+      <td>Elements that don&rsquo;t change with theme</td>
+    </tr>
+  </tbody>
+</table>
+
+<pre><code class="language-javascript">// From analyze.js — detecting the surface hierarchy
+function analyzeSurfaceHierarchy(tokens) {
+  const layers = [];
+  for (let i = 1; i &lt;= 8; i++) {
+    const key = `--colorNeutralBackground${i}`;
+    const val = tokens[key];
+    if (val) {
+      const c = parseColor(val);
+      layers.push({
+        layer: i,
+        token: key,
+        value: val,
+        hex: c ? colorToHex(c) : val,
+        luminance: c ? luminance(c).toFixed(4) : "N/A",
+        brightness: c ? perceivedBrightness(c).toFixed(3) : "N/A",
+      });
+    }
+  }
+  return { layers };
+}</code></pre>
+
+<div class="callout callout-design">
+  <div class="callout-title">Design System Concept</div>
+  <p>
+    The layer numbering creates a <strong>z-axis of brightness</strong>. Imagine
+    stacking sheets of paper: Layer 1 is the top sheet (brightest/closest), and each
+    layer beneath is slightly dimmer. This is how Fluent UI communicates depth without
+    shadows &mdash; the brightness difference <em>is</em> the depth cue. When we dim
+    the theme, we must preserve these relative brightness steps, or the UI loses its
+    sense of layering.
+  </p>
+</div>
+
+<h3 id="interaction-states">Interaction States: Hover, Pressed, Selected, Disabled</h3>
+
+<p>
+  Each background token can have up to four interaction variants. These follow a
+  consistent naming pattern:
+</p>
+
+<div class="diagram">
+   Token Family: --colorNeutralBackground1
+   ┌────────────────────────────────────────────────────┐
+   │                                                    │
+   │  Base      ──────  #ffffff   (default state)       │
+   │  Hover     ──────  #f5f5f5   (mouse over)          │
+   │  Pressed   ──────  #e0e0e0   (mouse down)          │
+   │  Selected  ──────  #ebebeb   (active/checked)      │
+   │  Disabled  ──────  #f0f0f0   (non-interactive)     │
+   │                                                    │
+   │  Brightness shift pattern (light mode):            │
+   │  Base ← brightest                                  │
+   │  Hover → slightly darker (−0.02 to −0.04)         │
+   │  Pressed → darkest (−0.06 to −0.08)               │
+   │  Selected → between hover and pressed              │
+   │  Disabled → near base but desaturated              │
+   └────────────────────────────────────────────────────┘
+</div>
+
+<pre><code class="language-javascript">// From analyze.js — finding interaction state families
+function analyzeInteractionStates(tokens) {
+  const families = {};
+  const statePattern = /(.*?)(Hover|Pressed|Selected|Disabled)$/;
+
+  for (const key of Object.keys(tokens)) {
+    const base = key.replace(/^--/, "");
+    const match = base.match(statePattern);
+    if (match) {
+      const family = `--${match[1]}`;
+      if (!families[family]) families[family] = { base: null, states: {} };
+      families[family].states[match[2]] = {
+        token: key, value: tokens[key]
+      };
+    }
+  }
+
+  // Match bases — only include families with a base AND states
+  for (const family of Object.keys(families)) {
+    if (tokens[family]) {
+      families[family].base = { token: family, value: tokens[family] };
+    }
+  }
+}</code></pre>
+
+<p>
+  The analysis reveals ~30 token families with complete state sets. The brightness
+  shift between states is consistent: Hover is 2&ndash;4% darker than Base, Pressed
+  is 6&ndash;8% darker, and Selected falls between. This pattern is critical for theme
+  generation &mdash; we can&rsquo;t just dim the Base and leave its states untouched,
+  or the hover feedback would disappear (all states would appear the same brightness).
+</p>
+
+<h3 id="foreground-ramp">The Foreground Ramp</h3>
+
+<p>
+  Foreground tokens control text and icon colors. They form a brightness ramp from
+  high-contrast primary text to nearly-invisible disabled text:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Level</th>
+      <th>Token</th>
+      <th>Light Value</th>
+      <th>Brightness</th>
+      <th>Used For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1 (primary)</td>
+      <td><code>--colorNeutralForeground1</code></td>
+      <td><code>#242424</code></td>
+      <td>0.141</td>
+      <td>Primary text, headings</td>
+    </tr>
+    <tr>
+      <td>2 (secondary)</td>
+      <td><code>--colorNeutralForeground2</code></td>
+      <td><code>#424242</code></td>
+      <td>0.259</td>
+      <td>Secondary text, labels</td>
+    </tr>
+    <tr>
+      <td>3 (tertiary)</td>
+      <td><code>--colorNeutralForeground3</code></td>
+      <td><code>#616161</code></td>
+      <td>0.380</td>
+      <td>Muted text, captions</td>
+    </tr>
+    <tr>
+      <td>4 (quaternary)</td>
+      <td><code>--colorNeutralForeground4</code></td>
+      <td><code>#707070</code></td>
+      <td>0.439</td>
+      <td>Placeholder text</td>
+    </tr>
+    <tr>
+      <td>Disabled</td>
+      <td><code>--colorNeutralForegroundDisabled</code></td>
+      <td><code>#bdbdbd</code></td>
+      <td>0.741</td>
+      <td>Disabled controls</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  In light mode, foregrounds are <em>dark on light</em> &mdash; low brightness values
+  on high brightness backgrounds. The contrast between Foreground1 (<code>#242424</code>,
+  brightness 0.14) and Background1 (<code>#ffffff</code>, brightness 1.0) gives a ratio
+  well above WCAG AA&rsquo;s 4.5:1 requirement. This polarity relationship becomes
+  the central challenge when dimming &mdash; as we&rsquo;ll see in Section 3.
+</p>
+
+<h3 id="brand-system">The Brand Color System</h3>
+
+<p>
+  Teams uses a single brand color (a muted indigo, <code>#5b5fc7</code>) that appears
+  in multiple tints and shades for different contexts:
+</p>
+
+<pre><code class="language-javascript">// From analyze.js — extracting the brand system
+function analyzeBrandSystem(tokens) {
+  const brand = {};
+  for (const [key, val] of Object.entries(tokens)) {
+    if (/^--colorBrand/i.test(key) || /^--colorCompound/i.test(key)) {
+      const c = parseColor(val);
+      brand[key] = {
+        value: val,
+        hex: c ? colorToHex(c) : val,
+        brightness: c ? perceivedBrightness(c).toFixed(3) : "N/A",
+      };
+    }
+  }
+  return brand;
+}</code></pre>
+
+<p>
+  Brand tokens divide into three categories:
+</p>
+
+<ul>
+  <li><strong>Backgrounds</strong> (<code>--colorBrandBackground</code>,
+    <code>--colorBrandBackground2</code>): used for filled buttons, selected tabs,
+    and accent surfaces</li>
+  <li><strong>Foregrounds</strong> (<code>--colorBrandForeground1</code>,
+    <code>--colorBrandForeground2</code>): used for links, icon accents, and brand text</li>
+  <li><strong>Strokes</strong> (<code>--colorBrandStroke1</code>,
+    <code>--colorBrandStroke2</code>): used for focused outlines and brand borders</li>
+</ul>
+
+<p>
+  The Compound tokens (<code>--colorCompoundBrand*</code>) are aliases that reference
+  the same colors but are used by composite components like checkboxes and toggles.
+</p>
+
+<h3 id="status-colors">Status Colors: Semantic Meaning</h3>
+
+<p>
+  Beyond neutral and brand colors, the design system defines semantic status colors.
+  Each status category (Danger, Success, Warning, Severe) has a full set of variants
+  for different surface contexts:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Status</th>
+      <th>Background Tokens</th>
+      <th>Border Tokens</th>
+      <th>Foreground Tokens</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Danger (Red)</td>
+      <td><code>Background1</code>, <code>Background3</code></td>
+      <td><code>Border1</code>, <code>Border2</code></td>
+      <td><code>Foreground1</code>, <code>Foreground3</code></td>
+    </tr>
+    <tr>
+      <td>Success (Green)</td>
+      <td><code>Background1</code>, <code>Background3</code></td>
+      <td><code>Border1</code>, <code>Border2</code></td>
+      <td><code>Foreground1</code>, <code>Foreground3</code></td>
+    </tr>
+    <tr>
+      <td>Warning (Yellow)</td>
+      <td><code>Background1</code>, <code>Background3</code></td>
+      <td><code>Border1</code>, <code>Border2</code></td>
+      <td><code>Foreground1</code>, <code>Foreground3</code></td>
+    </tr>
+    <tr>
+      <td>Severe (Orange)</td>
+      <td><code>Background1</code>, <code>Background3</code></td>
+      <td><code>Border1</code></td>
+      <td><code>Foreground1</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Each variant is carefully chosen for its context: Background1 is a very light tint
+  (e.g., pale red <code>#fdf3f4</code>) for inline alerts, Background3 is the saturated
+  base (e.g., <code>#d13438</code>) for filled danger buttons, and Foreground1 is
+  a darkened variant (e.g., <code>#b10e1c</code>) for readable text on white backgrounds.
+</p>
+
+<div class="callout callout-design">
+  <div class="callout-title">Design System Concept</div>
+  <p>
+    Status colors must remain <em>recognizable</em> after dimming. If danger-red
+    becomes indistinguishable from the dimmed background, users won&rsquo;t notice
+    error states. The dimming engine (Section 3) applies less-aggressive transforms
+    to status colors, preserving their hue and relative saturation while adjusting
+    only the lightness to match the new surface brightness.
+  </p>
+</div>
+
+<h3 id="palette-colors">Palette Colors: The Avatar Rainbow</h3>
+
+<p>
+  The largest token group is the palette: approximately 30 named color families
+  (<code>Red</code>, <code>DarkOrange</code>, <code>Marigold</code>, <code>Gold</code>,
+  <code>Brass</code>, <code>Forest</code>, <code>Teal</code>, <code>Steel</code>,
+  <code>Cornflower</code>, <code>Navy</code>, <code>Lilac</code>, <code>Berry</code>,
+  <code>Grape</code>, <code>Anchor</code>, <code>Charcoal</code>, &hellip;). Each
+  family has Background1, Background2, Background3, Foreground1, Foreground2, Foreground3,
+  and BorderActive tokens.
+</p>
+
+<p>
+  These feed the avatar color system &mdash; each user gets a deterministic palette
+  assignment for their avatar background. They&rsquo;re also used for tags, category
+  labels, and decorative elements. There are roughly 200 palette tokens in total.
+</p>
+
+<h3 id="contrast-verification">Contrast Ratio Verification</h3>
+
+<p>
+  The analysis script verifies WCAG 2.0 AA compliance for common foreground/background
+  pairings. The standard requires a contrast ratio of at least 4.5:1 for normal text
+  and 3:1 for large text (18px or 14px bold):
+</p>
+
+<pre><code class="language-javascript">// From analyze.js — contrast ratio calculation
+function contrastRatio(c1, c2) {
+  const l1 = luminance(c1);
+  const l2 = luminance(c2);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+// Relative luminance per WCAG 2.0
+function luminance(c) {
+  if (!c) return 0;
+  const srgb = [c.r / 255, c.g / 255, c.b / 255];
+  const linear = srgb.map(v =>
+    v &lt;= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  );
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}</code></pre>
+
+<p>
+  The analysis checks 10 critical pairings:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pairing</th>
+      <th>BG Token</th>
+      <th>FG Token</th>
+      <th>Ratio</th>
+      <th>AA</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Primary text on main bg</td>
+      <td><code>NeutralBackground1</code></td>
+      <td><code>NeutralForeground1</code></td>
+      <td>14.68</td>
+      <td>PASS</td>
+    </tr>
+    <tr>
+      <td>Secondary text on main bg</td>
+      <td><code>NeutralBackground1</code></td>
+      <td><code>NeutralForeground2</code></td>
+      <td>9.68</td>
+      <td>PASS</td>
+    </tr>
+    <tr>
+      <td>Tertiary text on main bg</td>
+      <td><code>NeutralBackground1</code></td>
+      <td><code>NeutralForeground3</code></td>
+      <td>5.74</td>
+      <td>PASS</td>
+    </tr>
+    <tr>
+      <td>Disabled text on main bg</td>
+      <td><code>NeutralBackground1</code></td>
+      <td><code>ForegroundDisabled</code></td>
+      <td>1.87</td>
+      <td>FAIL&ast;</td>
+    </tr>
+    <tr>
+      <td>Brand accent on main bg</td>
+      <td><code>NeutralBackground1</code></td>
+      <td><code>BrandForeground1</code></td>
+      <td>4.85</td>
+      <td>PASS</td>
+    </tr>
+    <tr>
+      <td>Text on brand button</td>
+      <td><code>BrandBackground</code></td>
+      <td><code>ForegroundOnBrand</code></td>
+      <td>7.20</td>
+      <td>PASS</td>
+    </tr>
+  </tbody>
+</table>
+
+<p style="font-size: 0.85rem; color: var(--text-muted);">
+  &ast; Disabled text intentionally fails AA &mdash; reduced contrast is the visual
+  signal that a control is non-interactive.
+</p>
+
+<h3 id="token-sharing">Token Value Sharing: Design System Compression</h3>
+
+<p>
+  One surprising discovery: many tokens with different names share the same underlying
+  color value. The analysis groups tokens by their value and reports clusters of 3&plus;
+  tokens pointing to the same hex code:
+</p>
+
+<pre><code class="language-javascript">// From analyze.js — finding shared token values
+function analyzeTokenGroups(tokens) {
+  const byValue = {};
+  for (const [key, val] of Object.entries(tokens)) {
+    if (!key.startsWith("--color")) continue;
+    if (!byValue[val]) byValue[val] = [];
+    byValue[val].push(key);
+  }
+
+  // Only report values shared by 3+ tokens
+  const shared = {};
+  for (const [val, keys] of Object.entries(byValue)) {
+    if (keys.length >= 3) {
+      shared[val] = keys;
+    }
+  }
+  return shared;
+}</code></pre>
+
+<p>
+  In the light theme, <code>#ffffff</code> is shared by 8+ tokens (Background1,
+  CardBackground, SubtleBackgroundLightAlphaSelected, etc.). Similarly,
+  <code>#242424</code> serves as both NeutralForeground1 and several other foreground
+  tokens. This &ldquo;compression&rdquo; exists because the design system defines
+  semantic meaning through token <em>names</em> while allowing the <em>values</em> to
+  converge when the visual intent is the same.
+</p>
+
+<div class="callout callout-arch">
+  <div class="callout-title">Architecture Decision</div>
+  <p>
+    We override tokens individually even when they share values. While it would be
+    tempting to collapse shared values into fewer CSS declarations, maintaining
+    per-token overrides means each token can diverge independently in future themes.
+    If a dimmed theme needs CardBackground to differ from Background1 (to add depth),
+    we can do that without restructuring.
+  </p>
+</div>
+
+<h3 id="non-color-tokens">Non-Color Tokens</h3>
+
+<p>
+  The 498 tokens aren&rsquo;t all colors. The observation also captures:
+</p>
+
+<ul>
+  <li><strong>Spacing</strong>: <code>--spacingHorizontalS</code> (8px),
+    <code>--spacingVerticalM</code> (12px), etc.</li>
+  <li><strong>Typography</strong>: <code>--fontSizeBase300</code> (14px),
+    <code>--fontWeightSemibold</code> (600), <code>--lineHeightBase300</code> (20px)</li>
+  <li><strong>Border Radius</strong>: <code>--borderRadiusMedium</code> (4px),
+    <code>--borderRadiusCircular</code> (10000px)</li>
+  <li><strong>Shadows</strong>: <code>--shadow2</code>, <code>--shadow4</code> through
+    <code>--shadow64</code> (multi-layer box-shadow values)</li>
+  <li><strong>Motion</strong>: <code>--durationFast</code> (150ms),
+    <code>--durationNormal</code> (300ms), <code>--curveEasyEase</code></li>
+</ul>
+
+<p>
+  For theming, we focus primarily on colors and shadows. Spacing and typography
+  tokens are left unchanged &mdash; modifying them breaks layout assumptions that Fluent
+  components rely on. Shadow tokens <em>are</em> adjusted: dimmer surfaces need less
+  shadow opacity since the contrast between the shadow and the surface decreases.
+</p>
+
+<h3 id="analysis-output">The Analysis Output</h3>
+
+<p>
+  The complete analysis is written to two files:
+</p>
+
+<ul>
+  <li><code>output/analysis.json</code> &mdash; machine-readable data: surface hierarchy,
+    interaction state families, brand system, color ramps, contrast pairs, token groups,
+    and status colors</li>
+  <li><code>output/analysis-report.txt</code> &mdash; a human-readable report summarizing
+    all findings, formatted for easy review before theme generation</li>
+</ul>
+
+<h3 id="what-we-know">What We Now Know</h3>
+
+<ul>
+  <li>8 background layers create visual depth through brightness stepping</li>
+  <li>Each layer has up to 5 interaction states with consistent brightness shifts</li>
+  <li>Foregrounds form a 5-level contrast ramp from primary to disabled</li>
+  <li>Brand colors have backgrounds, foregrounds, and strokes variants</li>
+  <li>Status colors (Danger/Success/Warning/Severe) each have ~8 context-specific variants</li>
+  <li>~200 palette tokens drive avatar and tag coloring</li>
+  <li>WCAG AA contrast is maintained across all critical pairings (except intentional disabled)</li>
+  <li>Many tokens share values &mdash; the design system uses names for semantics, values for visuals</li>
+</ul>
+
+<p>
+  With this structural understanding, we can now build a theme generator that transforms
+  every token <em>correctly</em> &mdash; preserving layer depth, maintaining contrast,
+  respecting brand vibrancy, and handling the polarity flip that occurs when backgrounds
+  darken past a threshold. That&rsquo;s the dimming engine, next.
+</p>
+
+<div class="section-nav">
+  <a href="/projects/theme-injector/tutorial/section01">&larr; Previous: Observation</a>
+  <a href="/projects/theme-injector/tutorial/section03">Next: The Dimming Engine &rarr;</a>
+</div>

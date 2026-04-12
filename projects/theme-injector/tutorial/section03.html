@@ -1,0 +1,712 @@
+---
+layout: themeinjector
+title: "Section 3: The Dimming Engine — Polarity-Aware Color Math"
+permalink: /projects/theme-injector/tutorial/section03
+---
+
+<h2 id="dimming-engine"><span class="section-number">3.</span> The Dimming Engine &mdash; Polarity-Aware Color Math</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  Dimming a light theme into seven darkness profiles through HSL transforms,
+  polarity inversion, and iterative contrast enforcement.
+</p>
+
+<p>
+  <span class="tag tag-arch">Arch</span>
+  <span class="tag tag-design">Design</span>
+</p>
+
+<h3 id="the-concept">The Concept: Dimming, Not Dark Mode</h3>
+
+<p>
+  A dark mode is a completely separate color palette &mdash; Teams already has one.
+  The dimming engine does something different: it takes the <em>light</em> theme and
+  progressively reduces its brightness while preserving the design system&rsquo;s
+  structure. The result is a continuum between &ldquo;overcast office&rdquo; and
+  &ldquo;midnight OLED&rdquo; &mdash; seven profiles ranging from a gentle 20%
+  reduction to a near-black 96% stress test.
+</p>
+
+<p>
+  Why dim instead of switching to dark mode? Because the light and dark themes in
+  Teams use different <em>palettes</em>, not just inverted brightness. Dark mode has
+  its own set of colors, contrast ratios, and accent tuning. Dimming preserves the
+  light palette&rsquo;s character &mdash; its warmth, its accent choices &mdash; while
+  just turning down the brightness. It&rsquo;s the difference between closing the
+  blinds and painting the walls black.
+</p>
+
+<h3 id="hsl-color-space">HSL Color Space: The Right Model</h3>
+
+<p>
+  All color transformations happen in <strong>HSL</strong> (Hue, Saturation, Lightness).
+  This is deliberate. In RGB, dimming means reducing all three channels proportionally,
+  which shifts hue unpredictably. In HSL, we can reduce lightness (L) while leaving
+  hue (H) and saturation (S) largely intact. The result preserves the
+  <em>perceived color</em> while only changing brightness.
+</p>
+
+<div class="callout callout-design">
+  <div class="callout-title">Color Science Concept</div>
+  <p>
+    <strong>HSL</strong> decouples three perceptual dimensions: <strong>Hue</strong>
+    (the color wheel position: 0&deg;=red, 120&deg;=green, 240&deg;=blue),
+    <strong>Saturation</strong> (color intensity from grey to vivid), and
+    <strong>Lightness</strong> (brightness from black to white). By manipulating L
+    independently, we can &ldquo;dim&rdquo; a color without shifting its identity.
+    HSL isn&rsquo;t perceptually uniform (the same &Delta;L doesn&rsquo;t look the
+    same across hues), but it&rsquo;s close enough for UI theming and the math is
+    straightforward.
+  </p>
+</div>
+
+<h3 id="rgb-hsl-conversion">RGB &harr; HSL Conversion</h3>
+
+<p>
+  The engine needs to convert between RGB (what CSS uses) and HSL (what we
+  manipulate). These are standard conversions:
+</p>
+
+<pre><code class="language-javascript">// From generate-dimmed.js — RGB to HSL
+function rgbToHSL(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0;  // achromatic (grey)
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g &lt; b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return { h: h * 360, s, l };
+}
+
+// HSL back to RGB
+function hslToRGB(h, s, l) {
+  h /= 360;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;  // achromatic
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t &lt; 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t &lt; 1 / 6) return p + (q - p) * 6 * t;
+      if (t &lt; 1 / 2) return q;
+      if (t &lt; 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l &lt; 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+  };
+}</code></pre>
+
+<h3 id="dim-background">dimBackground(): Reducing Lightness with Depth</h3>
+
+<p>
+  The core background transform is simple: multiply lightness by
+  <code>(1 - DIMMING_FACTOR)</code>. A factor of 0.35 retains 65% of the original
+  brightness. The <code>DEPTH_BOOST</code> parameter adds extra dimming per layer,
+  so deeper surfaces (Background3, Background4, &hellip;) darken more than the
+  primary surface, preserving the layer hierarchy:
+</p>
+
+<pre><code class="language-javascript">// From generate-dimmed.js — background dimming
+function dimBackground(c, layerDepth = 0) {
+  if (!c || c.transparent) return c;
+  const hsl = rgbToHSL(c.r, c.g, c.b);
+
+  // Core dimming: reduce lightness
+  const extraDim = layerDepth * CONFIG.DEPTH_BOOST;
+  hsl.l = hsl.l * (1 - CONFIG.DIMMING_FACTOR - extraDim);
+
+  // Reduce saturation slightly (dim surfaces look more muted)
+  hsl.s = hsl.s * CONFIG.BG_SATURATION_KEEP;
+
+  // Clamp to valid range
+  hsl.l = Math.max(0.05, Math.min(0.95, hsl.l));
+  const rgb = hslToRGB(hsl.h, hsl.s, hsl.l);
+  return { ...rgb, a: c.a };
+}</code></pre>
+
+<p>
+  For example, with <code>DIMMING_FACTOR=0.35</code> and <code>DEPTH_BOOST=0.05</code>:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Original</th>
+      <th>L (original)</th>
+      <th>L (dimmed)</th>
+      <th>Dimmed</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Background1 (depth 0)</td>
+      <td><code>#ffffff</code></td>
+      <td>1.000</td>
+      <td>0.650</td>
+      <td><code>#a6a6a6</code></td>
+    </tr>
+    <tr>
+      <td>Background2 (depth 1)</td>
+      <td><code>#fafafa</code></td>
+      <td>0.980</td>
+      <td>0.588</td>
+      <td><code>#969696</code></td>
+    </tr>
+    <tr>
+      <td>Background3 (depth 2)</td>
+      <td><code>#f5f5f5</code></td>
+      <td>0.961</td>
+      <td>0.529</td>
+      <td><code>#878787</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  The DEPTH_BOOST ensures that even though the original layers are very close in
+  brightness (1.000, 0.980, 0.961), the dimmed versions maintain distinguishable
+  steps. Without the boost, aggressive dimming would collapse all layers to nearly
+  identical greys.
+</p>
+
+<h3 id="the-polarity-problem">The Polarity Problem</h3>
+
+<p>
+  Here&rsquo;s where it gets interesting. In light mode, foreground text is
+  <em>dark on light</em>: black text (<code>#242424</code>, L&asymp;0.14) on white
+  backgrounds (<code>#ffffff</code>, L=1.0). As we dim the background to L=0.65, the
+  dark foreground is still readable. Dim it to L=0.50? Still okay, though contrast
+  is shrinking. Dim it to L=0.35?
+</p>
+
+<p>
+  Now we have a problem. The background (L=0.35) is approaching the foreground
+  (L=0.14). The text is becoming invisible &mdash; dark grey on medium-dark grey.
+  At some point, the foreground must <em>flip polarity</em>: stop being dark-on-light
+  and start being light-on-dark.
+</p>
+
+<div class="diagram">
+  Background Lightness vs. Foreground Polarity
+
+  L=1.0  ┤ ██ BG: White          FG: Dark (#242424)
+  L=0.8  ┤ ██ BG: Light grey     FG: Dark — still fine
+  L=0.65 ┤ ██ BG: Medium grey    FG: Dark — contrast shrinking
+  L=0.50 ┤ ██ BG: Mid-grey       FG: Dark — getting risky
+         │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ FG_FLIP_THRESHOLD (0.45) ─ ─ ─
+  L=0.40 ┤ ██ BG: Dark-ish       FG: FLIPPED → Light (#c5c5c5)
+  L=0.25 ┤ ██ BG: Dark           FG: Light — good contrast
+  L=0.10 ┤ ██ BG: Near-black     FG: Light — high contrast
+  L=0.02 ┤ ██ BG: VOID           FG: Light — crushing limits
+</div>
+
+<h3 id="fg-flip-threshold">FG_FLIP_THRESHOLD: The Crossover Point</h3>
+
+<p>
+  The <code>FG_FLIP_THRESHOLD</code> (default: 0.45) controls when foregrounds
+  switch polarity. When the dimmed background&rsquo;s lightness drops below this
+  value, all foreground tokens on that surface are inverted from dark to light:
+</p>
+
+<pre><code class="language-javascript">// From generate-dimmed.js — foreground dimming with polarity awareness
+function dimForeground(c, dimmedBg) {
+  if (!c || c.transparent) return c;
+
+  const fgHSL = rgbToHSL(c.r, c.g, c.b);
+  const bgHSL = dimmedBg
+    ? rgbToHSL(dimmedBg.r, dimmedBg.g, dimmedBg.b)
+    : null;
+  const bgL = bgHSL ? bgHSL.l : 0.65;
+
+  // ── Decide polarity ──
+  const shouldFlipLight = bgL &lt; CONFIG.FG_FLIP_THRESHOLD;
+
+  if (shouldFlipLight) {
+    // Background is dark enough that foregrounds must go LIGHT.
+    // Mirror the fg lightness: the darker the original fg was,
+    // the lighter the flipped version should be.
+    fgHSL.l = 0.55 + (1 - fgHSL.l) * 0.40;
+    // Desaturate slightly — saturated light text looks garish
+    fgHSL.s = fgHSL.s * 0.75;
+  } else {
+    // Background is still above threshold — keep foreground dark,
+    // just dim proportionally to track the background shift.
+    fgHSL.l = fgHSL.l * (1 - CONFIG.DIMMING_FACTOR * 0.25);
+    fgHSL.l = Math.max(0.04, fgHSL.l);
+  }
+
+  // ... contrast enforcement follows ...
+}</code></pre>
+
+<h3 id="the-flip-formula">The Flip Formula</h3>
+
+<p>
+  The line <code>fgHSL.l = 0.55 + (1 - fgHSL.l) * 0.40</code> deserves unpacking.
+  The original foreground might be <code>#242424</code> (L&asymp;0.14, near-black text).
+  After flipping:
+</p>
+
+<pre><code class="language-javascript">// Original fg: L = 0.14 (dark text)
+fgHSL.l = 0.55 + (1 - 0.14) * 0.40
+        = 0.55 + 0.86 * 0.40
+        = 0.55 + 0.344
+        = 0.894
+// Result: L ≈ 0.89 → light grey text</code></pre>
+
+<p>
+  The formula ensures that the darkest original foregrounds become the lightest
+  flipped versions (maintaining the relative hierarchy), and that all flipped
+  foregrounds land in the 0.55&ndash;0.95 range &mdash; light enough to read on
+  dark backgrounds but not pure white.
+</p>
+
+<div class="callout callout-arch">
+  <div class="callout-title">Architecture Decision</div>
+  <p>
+    Why 0.45 as the threshold? At L=0.50 (true mid-grey), neither dark nor light
+    text has good contrast. Setting the threshold slightly below 0.50 keeps dark
+    foregrounds a bit longer, avoiding unnecessary flips in the medium dimming range.
+    The &ldquo;dimmed-medium&rdquo; profile (factor 0.50) produces backgrounds right
+    around this threshold &mdash; it&rsquo;s the profile where foregrounds are
+    &ldquo;deciding&rdquo; whether to flip, resulting in the most nuanced contrast
+    behavior.
+  </p>
+</div>
+
+<h3 id="contrast-enforcement">Contrast Enforcement Loop</h3>
+
+<p>
+  After computing the initial foreground lightness (whether flipped or not), the engine
+  iteratively adjusts until WCAG AA contrast (4.5:1) is met against the dimmed background:
+</p>
+
+<pre><code class="language-javascript">// From generate-dimmed.js — iterative contrast enforcement
+if (dimmedBg) {
+  let ratio = contrastRatio(result, dimmedBg);
+  let attempts = 0;
+
+  // Push in the correct direction:
+  // lighter if flipped (light-on-dark), darker if not (dark-on-light)
+  const step = shouldFlipLight ? 0.03 : -0.03;
+
+  while (ratio &lt; CONFIG.MIN_CONTRAST && attempts &lt; 30) {
+    fgHSL.l = Math.max(0.02, Math.min(0.98, fgHSL.l + step));
+    rgb = hslToRGB(fgHSL.h, fgHSL.s, fgHSL.l);
+    result = { ...rgb, a: c.a };
+    ratio = contrastRatio(result, dimmedBg);
+    attempts++;
+
+    // Safety reverse: if we hit the rail without meeting contrast,
+    // try the opposite direction
+    if (attempts === 20 && ratio &lt; CONFIG.MIN_CONTRAST) {
+      const reverseStep = -step;
+      // Reset and try the other way for remaining attempts
+      for (let j = 0; j &lt; 10 && ratio &lt; CONFIG.MIN_CONTRAST; j++) {
+        fgHSL.l = Math.max(0.02, Math.min(0.98, fgHSL.l + reverseStep));
+        rgb = hslToRGB(fgHSL.h, fgHSL.s, fgHSL.l);
+        result = { ...rgb, a: c.a };
+        ratio = contrastRatio(result, dimmedBg);
+      }
+      break;
+    }
+  }
+}</code></pre>
+
+<div class="callout callout-warn">
+  <div class="callout-title">Warning</div>
+  <p>
+    The safety reverse at attempt 20 handles an edge case: if pushing lighter
+    doesn&rsquo;t achieve contrast (because the background is also very light), the
+    algorithm reverses direction and tries going darker. This prevents infinite loops
+    in degenerate cases. In the Void profile (96% dimming), some token pairs exhaust
+    all 30 attempts and settle on the best achievable ratio &mdash; which may be
+    below AA, hence &ldquo;barely usable.&rdquo;
+  </p>
+</div>
+
+<h3 id="per-layer-reference">Per-Layer Reference Backgrounds</h3>
+
+<p>
+  Foreground tokens don&rsquo;t float in a vacuum &mdash; each one sits on a specific
+  background layer. <code>--colorNeutralForeground1</code> might appear on Background1
+  (the main content area) or on Background2 (a sidebar). The engine needs to know
+  which background to contrast-check against.
+</p>
+
+<p>
+  The generator maps foreground token names to their reference surface. Foreground1
+  through Foreground4 are checked against Background1 (the brightest surface).
+  ForegroundOnBrand is checked against BrandBackground. Card foregrounds are checked
+  against CardBackground. This per-layer mapping ensures that contrast enforcement
+  uses the correct pairing, not a global average.
+</p>
+
+<h3 id="seven-profiles">Seven Dimming Profiles</h3>
+
+<p>
+  The engine generates seven themes from the same source data, each with different
+  configuration overrides:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Profile</th>
+      <th>Factor</th>
+      <th>BG Lightness&ast;</th>
+      <th>Polarity</th>
+      <th>Character</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Subtle</td>
+      <td>0.20</td>
+      <td>~0.80</td>
+      <td>Dark-on-light</td>
+      <td>Barely noticeable reduction</td>
+    </tr>
+    <tr>
+      <td>Dimmed Light</td>
+      <td>0.35</td>
+      <td>~0.65</td>
+      <td>Dark-on-light</td>
+      <td>Comfortable &ldquo;overcast&rdquo; feel</td>
+    </tr>
+    <tr>
+      <td>Medium</td>
+      <td>0.50</td>
+      <td>~0.50</td>
+      <td>Transitional</td>
+      <td>Near the flip threshold</td>
+    </tr>
+    <tr>
+      <td>Deep</td>
+      <td>0.65</td>
+      <td>~0.35</td>
+      <td>Light-on-dark</td>
+      <td>Dark mode feel, light-derived</td>
+    </tr>
+    <tr>
+      <td>Dark</td>
+      <td>0.80</td>
+      <td>~0.20</td>
+      <td>Light-on-dark</td>
+      <td>Firmly dark, muted brand</td>
+    </tr>
+    <tr>
+      <td>Abyss</td>
+      <td>0.90</td>
+      <td>~0.10</td>
+      <td>Light-on-dark</td>
+      <td>Near-black, aggressive</td>
+    </tr>
+    <tr>
+      <td>Void</td>
+      <td>0.96</td>
+      <td>~0.04</td>
+      <td>Light-on-dark</td>
+      <td>Stress test &mdash; barely usable</td>
+    </tr>
+  </tbody>
+</table>
+
+<p style="font-size: 0.85rem; color: var(--text-muted);">
+  &ast; Approximate lightness of Background1 after dimming. Actual values vary
+  slightly due to the original color&rsquo;s hue and saturation.
+</p>
+
+<pre><code class="language-javascript">// From generate-dimmed.js — profile definitions
+const PROFILES = [
+  {
+    name: "dimmed-subtle",
+    label: "Subtle Dim",
+    description: "A gentle 20% reduction.",
+    overrides: {
+      DIMMING_FACTOR: 0.20,
+      BRAND_DIMMING: 0.08,
+      SHADOW_OPACITY_MULT: 0.8,
+      BG_SATURATION_KEEP: 0.85,
+    },
+  },
+  {
+    name: "dimmed-light",
+    label: "Dimmed Light",
+    description: "The default ~35% dim.",
+    overrides: { DIMMING_FACTOR: 0.35 },
+  },
+  // ... medium (0.50), deep (0.65), dark (0.80), abyss (0.90) ...
+  {
+    name: "dimmed-void",
+    label: "Void",
+    description: "96% reduction — stress test.",
+    overrides: {
+      DIMMING_FACTOR: 0.96,
+      BRAND_DIMMING: 0.55,
+      SHADOW_OPACITY_MULT: 0.1,
+      BG_SATURATION_KEEP: 0.1,
+      DEPTH_BOOST: 0.005,
+      BRAND_SATURATION_KEEP: 0.3,
+      ALPHA_BG_MULT: 2.0,
+    },
+  },
+];</code></pre>
+
+<p>
+  Each profile overrides different knobs. The aggressive profiles (Dark, Abyss, Void)
+  also reduce <code>DEPTH_BOOST</code> &mdash; when backgrounds are already near-black,
+  large depth steps would push layers below the displayable range. They also increase
+  <code>ALPHA_BG_MULT</code> to make semi-transparent backgrounds more opaque on
+  dark surfaces, where transparency against a dark backdrop can make elements disappear.
+</p>
+
+<h3 id="void-stress-test">The Void Profile: Where Does It Break?</h3>
+
+<p>
+  The Void profile (96% dimming) exists specifically to test the algorithm&rsquo;s limits.
+  At this extreme:
+</p>
+
+<ul>
+  <li>Background1 lightness drops to ~0.04 &mdash; nearly pure black</li>
+  <li>Layer depth differences shrink to fractions of a percent, becoming visually
+    indistinguishable on most displays</li>
+  <li>Foreground contrast enforcement exhausts its iteration budget &mdash; some pairs
+    settle below WCAG AA</li>
+  <li>Brand colors lose almost all saturation, becoming grey-tinted</li>
+  <li>Shadows are nearly invisible (opacity multiplied by 0.1)</li>
+  <li>Status colors (danger red, success green) retain their hue but are heavily
+    muted, reducing urgency signals</li>
+</ul>
+
+<p>
+  Void isn&rsquo;t meant to be usable &mdash; it&rsquo;s a diagnostic tool.
+  If the algorithm produces garbage at Void but clean output at Abyss, the system
+  degrades gracefully. If Void looked the same as Abyss, it would mean the algorithm
+  was silently clamping too early, hiding bugs that would surface with future changes.
+</p>
+
+<h3 id="brand-dimming">Brand Color Dimming</h3>
+
+<p>
+  Brand colors get a separate, less aggressive dimming function. The brand accent
+  is the most recognizable color in the UI &mdash; dimming it as much as backgrounds
+  would make the interface feel colourless:
+</p>
+
+<pre><code class="language-javascript">// From generate-dimmed.js — brand color dimming
+function dimBrand(c) {
+  if (!c || c.transparent) return c;
+  const hsl = rgbToHSL(c.r, c.g, c.b);
+  hsl.l = hsl.l * (1 - CONFIG.BRAND_DIMMING);   // e.g., 0.15 vs 0.35
+  hsl.s = hsl.s * CONFIG.BRAND_SATURATION_KEEP;  // e.g., 0.85 vs 0.70
+  hsl.l = Math.max(0.1, Math.min(0.9, hsl.l));
+  const rgb = hslToRGB(hsl.h, hsl.s, hsl.l);
+  return { ...rgb, a: c.a };
+}</code></pre>
+
+<p>
+  At the default profile (<code>BRAND_DIMMING=0.15</code>), the brand loses only
+  15% brightness compared to backgrounds&rsquo; 35%. This makes brand elements
+  &ldquo;pop&rdquo; more on the dimmed surface &mdash; a desirable effect.
+  Saturation is also preserved more aggressively (<code>BRAND_SATURATION_KEEP=0.85</code>)
+  to maintain vibrancy.
+</p>
+
+<h3 id="shadow-reduction">Shadow Opacity Reduction</h3>
+
+<p>
+  On a bright white surface, shadows need substantial opacity to be visible. On a
+  dimmed surface, the same shadow opacity creates an overly heavy appearance because
+  the contrast between the shadow and the surface has decreased. The engine scales
+  shadow opacity proportionally:
+</p>
+
+<pre><code class="language-javascript">// From generate-dimmed.js — shadow adjustment
+function dimShadow(shadowStr) {
+  if (!shadowStr) return shadowStr;
+  return shadowStr.replace(
+    /rgba\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\)/g,
+    (match, r, g, b, a) => {
+      const newA = Math.max(0.02,
+        parseFloat(a) * CONFIG.SHADOW_OPACITY_MULT
+      );
+      return `rgba(${r}, ${g}, ${b}, ${newA.toFixed(2)})`;
+    }
+  );
+}
+
+// Example: --shadow4 at default profile (SHADOW_OPACITY_MULT = 0.6)
+// Original: "0 0 2px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.14)"
+// Dimmed:   "0 0 2px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.08)"</code></pre>
+
+<h3 id="configuration-knobs">The Complete Configuration</h3>
+
+<p>
+  Each profile is built from a base configuration with per-profile overrides. Here are
+  all the knobs the engine exposes:
+</p>
+
+<pre><code class="language-javascript">const BASE_CONFIG = {
+  // Overall dimming (0 = no change, 1 = black)
+  DIMMING_FACTOR: 0.35,
+
+  // Extra dimming per background layer (creates depth steps)
+  DEPTH_BOOST: 0.05,
+
+  // Minimum contrast ratio (WCAG AA for normal text)
+  MIN_CONTRAST: 4.5,
+
+  // Background lightness below which foregrounds flip polarity
+  FG_FLIP_THRESHOLD: 0.45,
+
+  // Saturation retention for dimmed backgrounds
+  BG_SATURATION_KEEP: 0.7,
+
+  // Brand color adjustments (less aggressive than BG)
+  BRAND_DIMMING: 0.15,
+  BRAND_SATURATION_KEEP: 0.85,
+
+  // Shadow opacity multiplier
+  SHADOW_OPACITY_MULT: 0.6,
+
+  // Semi-transparent background opacity boost for dark surfaces
+  ALPHA_BG_MULT: 1.2,
+};</code></pre>
+
+<div class="callout callout-tip">
+  <div class="callout-title">Tip</div>
+  <p>
+    These configuration values were discovered empirically, not derived from theory.
+    The process: generate a profile, inject it into Teams, visually inspect, adjust a
+    parameter, regenerate, reinject. The live-reload capability of the injector makes
+    this iteration loop fast &mdash; change a constant, save, see the result in
+    under a second.
+  </p>
+</div>
+
+<h3 id="end-to-end-flow">End-to-End Dimming Flow</h3>
+
+<div class="diagram">
+  ┌──────────────────────────────────────────────────────┐
+  │              generate-dimmed.js                       │
+  │                                                       │
+  │  Input: observed-tokens.json (498 light-mode tokens)  │
+  │                                                       │
+  │  For each of 7 profiles:                              │
+  │    ┌──────────────────────────────────────────────┐   │
+  │    │  For each token:                              │   │
+  │    │                                               │   │
+  │    │  Is it a background?                          │   │
+  │    │    → dimBackground(color, layerDepth)          │   │
+  │    │    → Reduce L by factor, boost by layer depth │   │
+  │    │                                               │   │
+  │    │  Is it a foreground?                          │   │
+  │    │    → dimForeground(color, refBackground)       │   │
+  │    │    → Check bgL vs FG_FLIP_THRESHOLD           │   │
+  │    │    → If below: flip formula                   │   │
+  │    │    → If above: proportional dim               │   │
+  │    │    → Iterate until contrast ≥ 4.5:1          │   │
+  │    │                                               │   │
+  │    │  Is it a brand color?                         │   │
+  │    │    → dimBrand(color) — less aggressive         │   │
+  │    │                                               │   │
+  │    │  Is it a shadow?                              │   │
+  │    │    → dimShadow(value) — reduce opacity         │   │
+  │    │                                               │   │
+  │    │  Is it a status/palette color?                │   │
+  │    │    → dimBackground or dimForeground as needed  │   │
+  │    │    → Preserve hue, reduce lightness            │   │
+  │    └──────────────────────────────────────────────┘   │
+  │                                                       │
+  │  Output: themes/dimmed-{profile}.css                  │
+  │          output/dimmed-{profile}-mapping.json          │
+  └──────────────────────────────────────────────────────┘
+</div>
+
+<h3 id="output-css">The Generated CSS</h3>
+
+<p>
+  Each profile produces a self-contained CSS file with all 498 token overrides.
+  The file targets <code>.fui-FluentProvider</code> with <code>!important</code>
+  on every declaration:
+</p>
+
+<pre><code class="language-css">/* dimmed-light.css — generated by generate-dimmed.js */
+/* Profile: Dimmed Light (factor 0.35) */
+
+.fui-FluentProvider {
+  /* ── Neutral Backgrounds ── */
+  --colorNeutralBackground1: #a6a6a6 !important;
+  --colorNeutralBackground1Hover: #9c9c9c !important;
+  --colorNeutralBackground1Pressed: #8f8f8f !important;
+  --colorNeutralBackground1Selected: #949494 !important;
+  --colorNeutralBackground2: #969696 !important;
+  /* ... */
+
+  /* ── Neutral Foregrounds ── */
+  --colorNeutralForeground1: #1c1c1c !important;
+  --colorNeutralForeground2: #2e2e2e !important;
+  /* ... */
+
+  /* ── Brand ── */
+  --colorBrandBackground: #4e5199 !important;
+  --colorBrandForeground1: #4e5199 !important;
+  /* ... */
+
+  /* ── Shadows ── */
+  --shadow4: 0 0 2px rgba(0,0,0,0.07),
+             0 2px 4px rgba(0,0,0,0.08) !important;
+  /* ... 490+ more overrides ... */
+}</code></pre>
+
+<p>
+  A mapping JSON file is also written, documenting every transformation:
+  original value, dimmed value, which transform was applied, the contrast ratio
+  achieved, and whether the foreground flipped polarity.
+</p>
+
+<h3 id="what-we-built">What We Built</h3>
+
+<ul>
+  <li>A polarity-aware dimming engine that preserves design system structure</li>
+  <li>HSL transforms that reduce brightness while preserving hue identity</li>
+  <li>DEPTH_BOOST to maintain layer hierarchy even under aggressive dimming</li>
+  <li>FG_FLIP_THRESHOLD (0.45) as the crossover from dark-on-light to light-on-dark</li>
+  <li>Iterative contrast enforcement with safety reverse for edge cases</li>
+  <li>Brand and shadow transforms with separate, less-aggressive parameters</li>
+  <li>Seven profiles from subtle to void, each tuning the same set of knobs</li>
+  <li>Self-contained CSS output files ready for injection</li>
+</ul>
+
+<p>
+  The dimming engine completes the core pipeline: observe tokens from Teams, analyze
+  their structure, and generate transformed themes that respect the design system&rsquo;s
+  layer hierarchy, contrast requirements, and brand identity. The next section covers
+  porting existing VS Code and GitHub themes into the Teams token namespace &mdash;
+  bringing entirely new color palettes to Teams rather than just dimming the native ones.
+</p>
+
+<div class="section-nav">
+  <a href="/projects/theme-injector/tutorial/section02">&larr; Previous: Analysis</a>
+  <a href="/projects/theme-injector/tutorial/section04">Next: Porting Themes &rarr;</a>
+</div>

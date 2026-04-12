@@ -1,0 +1,518 @@
+---
+layout: themeinjector
+title: "Section 6: Video Feeds, Calling Screens & Native Theme Control"
+permalink: /projects/theme-injector/tutorial/section06
+---
+
+<h2 id="calling-and-native"><span class="section-number">6.</span> Video Feeds, Calling Screens &amp; Native Theme Control</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  Debugging the video feed bug, discovering multiple FluentProviders,
+  and the exhaustive search for a way to switch Teams&rsquo; native theme programmatically.
+</p>
+
+<p>
+  <span class="tag tag-cdp">CDP</span>
+  <span class="tag tag-arch">Arch</span>
+</p>
+
+<h3 id="the-bug">The Bug: Theme Blocks Video Feeds</h3>
+
+<p>
+  Theme injection worked perfectly in chat, channels, search &mdash; every view
+  in Teams except one. Join a call, and the video feeds disappear. Other
+  participants&rsquo; cameras show a solid dark rectangle. Your own self-view is
+  gone. The theme CSS was painting opaque backgrounds over the video elements.
+</p>
+
+<p>
+  This was the most user-visible bug in v2&rsquo;s early development. A theme that
+  breaks video calls is worse than no theme at all. Understanding why it happened
+  required digging into how Teams structures its calling UI &mdash; and discovering
+  that the calling screen is fundamentally different from the chat screen.
+</p>
+
+<h3 id="multiple-providers">Discovery: Multiple FluentProvider Instances</h3>
+
+<p>
+  In the chat view, Teams has a single <code>.fui-FluentProvider</code> wrapping
+  most of the UI. During calls, the DOM gains additional FluentProvider instances.
+  The <code>observe-calling.js</code> tool revealed at least five during an active
+  call:
+</p>
+
+<pre><code class="language-javascript">// From observe-calling.js — finding all FluentProviders during a call
+const providersResult = await Runtime.evaluate({
+  expression: `
+    (() =&gt; {
+      const providers = [...document.querySelectorAll('.fui-FluentProvider')];
+      return JSON.stringify(providers.map(p =&gt; ({
+        dataTid: p.getAttribute('data-tid') || '',
+        classes: p.className.substring(0, 100),
+        tokenCount: [...getComputedStyle(p)]
+          .filter(prop =&gt; prop.startsWith('--')).length,
+        bounds: (() =&gt; {
+          const r = p.getBoundingClientRect();
+          return { w: Math.round(r.width), h: Math.round(r.height) };
+        })(),
+      })));
+    })()
+  `,
+  returnByValue: true,
+});</code></pre>
+
+<p>
+  The key discovery: one FluentProvider carried <code>data-tid="calling-screen-background"</code>.
+  This element was positioned at <code>z-index: -1</code> with <code>position: fixed</code>,
+  covering the entire viewport. It served as the backdrop behind the video grid. By
+  setting its background to a dark color, the theme CSS was painting an opaque layer
+  that hid the video elements underneath.
+</p>
+
+<p>
+  Another provider with a <code>meeting-branding</code> identifier appeared for
+  meetings with custom branding enabled &mdash; separate from both the main chat
+  provider and the calling background provider.
+</p>
+
+<h3 id="wrong-fix">The Initial Wrong Fix</h3>
+
+<p>
+  The first attempt was to exclude calling-related FluentProviders from the token
+  overrides:
+</p>
+
+<pre><code class="language-css">/* ❌ Initial attempt — exclude calling providers */
+.fui-FluentProvider:not([data-tid*="calling"]):not([data-tid*="meeting"]) {
+  --colorNeutralBackground1: #21252b !important;
+  /* ... 400 more tokens */
+}</code></pre>
+
+<p>
+  This stopped blocking the video feeds, but introduced a new problem: the calling
+  screen UI (buttons, participant names, controls) remained in the default Teams
+  light or dark theme. The call screen looked like a completely different app from
+  the rest of Teams. Half-themed was arguably worse than the original bug.
+</p>
+
+<h3 id="html-class">The html Class Discovery</h3>
+
+<p>
+  Inspecting the <code>&lt;html&gt;</code> element during calls revealed something
+  interesting. In normal chat, the class might be <code>theme-darkV2</code>. During
+  calls, it changes to <code>theme-defaultV2</code> &mdash; regardless of whether
+  Teams is in light or dark mode. The &ldquo;V2&rdquo; suffix indicates a Fluent UI
+  v9 rendering context.
+</p>
+
+<p>
+  This is significant because the <code>html</code>/<code>body</code> background rule
+  from Section 5 (<code>html { background-color: #21252b; }</code>) was forcing an
+  opaque background even during calls. The solution: make the rule conditional on
+  the html class:
+</p>
+
+<pre><code class="language-css">/* Normal views — set opaque background */
+html:not([class*="V2"]) {
+  background-color: #21252b !important;
+}
+html:not([class*="V2"]) body {
+  background-color: #21252b !important;
+}
+
+/* During calls — transparent for video feeds */
+html[class*="V2"], html[class*="V2"] body {
+  background-color: transparent !important;
+}</code></pre>
+
+<p>
+  The <code>[class*="V2"]</code> selector catches all calling-related class names
+  (<code>theme-darkV2</code>, <code>theme-defaultV2</code>, etc.) and forces
+  transparency. In normal chat views where the html class doesn&rsquo;t contain
+  &ldquo;V2&rdquo;, the opaque background prevents the WebView2 window color
+  from bleeding through.
+</p>
+
+<h3 id="calling-observation">388 Tokens Differ &mdash; Same Names, Different Values</h3>
+
+<p>
+  The <code>observe-calling.js</code> script compared tokens from the main
+  FluentProvider against the calling screen FluentProvider. The result: 388 tokens
+  had different values. But the token <em>names</em> were identical &mdash;
+  <code>--colorNeutralBackground1</code> existed in both providers, just with
+  different hex values.
+</p>
+
+<p>
+  The calling provider&rsquo;s tokens were <em>light-mode values</em>. Even when
+  Teams is in dark mode, the calling screen provider uses the light palette. This
+  explains why naively excluding it from overrides produced a light-themed call
+  screen.
+</p>
+
+<div class="callout callout-cdp">
+  <div class="callout-title">Why Light Mode for Calls?</div>
+  <p>
+    Teams uses light-mode tokens for the calling screen because the UI overlays
+    on top of video content (which can be any brightness). Light-colored controls
+    with shadows provide better visibility against arbitrary video backgrounds than
+    dark controls. This is a deliberate design decision, not a bug in Teams &mdash;
+    but it causes problems for third-party theming because now we have to override
+    the same token names in two different contexts.
+  </p>
+</div>
+
+<h3 id="correct-fix">The Correct Fix: Override All Providers</h3>
+
+<p>
+  The solution that emerged from this analysis:
+</p>
+
+<ol>
+  <li>Apply token overrides to <strong>all</strong> <code>.fui-FluentProvider</code>
+    instances &mdash; including the calling screen provider. No exclusions.</li>
+  <li>Keep <code>html</code>/<code>body</code> transparent during calls so video
+    feeds show through the gaps between UI elements.</li>
+  <li>Set the <code>[data-tid="calling-screen-background"]</code> element&rsquo;s
+    background explicitly to the theme&rsquo;s deepest color.</li>
+</ol>
+
+<pre><code class="language-css">/* Apply tokens to ALL FluentProviders — including calling */
+.fui-FluentProvider {
+  --colorNeutralBackground1: #21252b !important;
+  /* ... all 400+ tokens */
+}
+
+/* Calling screen backdrop — explicit bg */
+[data-tid="calling-screen-background"] {
+  background-color: #1b1f23 !important;
+}
+
+/* html/body: opaque normally, transparent during calls */
+html:not([class*="V2"]) {
+  background-color: #21252b !important;
+}
+html[class*="V2"], html[class*="V2"] body {
+  background-color: transparent !important;
+}</code></pre>
+
+<p>
+  Video feeds work because <code>&lt;video&gt;</code> and <code>&lt;canvas&gt;</code>
+  elements render their content independent of CSS background tokens. They don&rsquo;t
+  use <code>--colorNeutralBackground1</code> &mdash; they draw pixels directly. The
+  issue was never the tokens blocking video; it was the opaque
+  <code>html</code>/<code>body</code> background painting over the transparent regions
+  where video feeds are visible.
+</p>
+
+<h3 id="target-scanning">New Target Discovery: setTimeout Scanning</h3>
+
+<p>
+  Teams opens new windows for pop-out chats, calls, and meeting stages. Each window
+  is a new WebView2 instance with its own CDP target. If the injector only connects
+  to the initial target, new windows won&rsquo;t be themed.
+</p>
+
+<p>
+  The injector solves this with a polling loop that scans for new CDP targets
+  every 3 seconds:
+</p>
+
+<pre><code class="language-javascript">// From injector.js — continuous target scanning
+const TARGET_SCAN_INTERVAL_MS = 3000;
+
+const scanForNewTargets = async () =&gt; {
+  const targets = await findTargets("Teams");
+  for (const target of targets) {
+    if (connectedTargetIds.has(target.id)) continue;
+
+    const client = await CDP({ port: target._port, target });
+    const { Runtime, Page } = client;
+    await Page.enable();
+
+    // Inject theme immediately into new target
+    await Runtime.evaluate({ expression });
+    console.log(`  New target injected: ${target.title}`);
+
+    connectedTargetIds.add(target.id);
+    clients.push({ client, Runtime, Page, target });
+
+    // Re-inject on navigation
+    Page.on("frameNavigated", async (params) =&gt; {
+      if (!params.frame.parentId) {
+        await Runtime.evaluate({ expression });
+      }
+    });
+  }
+};
+
+setInterval(scanForNewTargets, TARGET_SCAN_INTERVAL_MS);</code></pre>
+
+<p>
+  The scan uses a Set of connected target IDs to avoid duplicate connections. When a
+  new target appears, it immediately injects the current theme CSS, registers a
+  navigation handler for re-injection after page transitions, and adds a disconnect
+  listener to clean up if the window closes.
+</p>
+
+<h3 id="native-detection">Native Theme Detection: The Reliability Problem</h3>
+
+<p>
+  Some themes require Teams to be in a specific native mode. Dimmed themes (Section 3)
+  need light mode as input. Ported VS Code themes (Section 4) work best when Teams
+  is in dark mode, to avoid a white flash on new windows before the theme injects.
+</p>
+
+<p>
+  The obvious detection approach &mdash; reading
+  <code>localStorage.getItem(&rsquo;tmp.desktopTheme&rsquo;)</code> &mdash; is unreliable.
+  The value can be stale, missing, or not reflect the actual visual state after
+  a theme change. The reliable method: temporarily remove the injected style and
+  read the actual computed background color:
+</p>
+
+<pre><code class="language-javascript">// From injector.js — reliable mode detection
+async function checkMode(Runtime) {
+  const result = await Runtime.evaluate({
+    expression: `
+      (() =&gt; {
+        // Temporarily remove injected theme
+        const injected = document.getElementById('custom-teams-theme');
+        if (injected) injected.remove();
+
+        // Force style recalc
+        document.body.offsetHeight;
+
+        // Read the actual background
+        const p = document.querySelector('.fui-FluentProvider');
+        const bg = getComputedStyle(p)
+          .getPropertyValue('--colorNeutralBackground1').trim();
+
+        // Parse and check brightness
+        const d = document.createElement('div');
+        d.style.color = bg;
+        document.body.appendChild(d);
+        const rgb = getComputedStyle(d).color.match(/\\d+/g);
+        document.body.removeChild(d);
+
+        const brightness = (0.299*rgb[0] + 0.587*rgb[1] + 0.114*rgb[2]) / 255;
+        return brightness &gt; 0.5 ? 'light' : 'dark';
+      })()
+    `,
+    returnByValue: true,
+  });
+  return result.result.value;
+}</code></pre>
+
+<p>
+  This is destructive (it removes the theme briefly) but accurate. The theme is
+  re-injected immediately afterward, so the visual flicker is imperceptible in
+  practice.
+</p>
+
+<h3 id="switching-saga">The Theme Switching Saga</h3>
+
+<p>
+  Detecting the native mode is useful, but the real goal is to <em>switch</em> it
+  programmatically. If a user selects a dimmed theme but Teams is in dark mode, the
+  injector should switch Teams to light mode automatically. This turned out to be
+  far harder than expected.
+</p>
+
+<p>
+  Here&rsquo;s every approach that was tried and why each failed:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>Result</th>
+      <th>Why It Failed</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>localStorage.setItem(&rsquo;tmp.desktopTheme&rsquo;, &rsquo;dark&rsquo;)</code></td>
+      <td>No effect</td>
+      <td>Teams reads but doesn&rsquo;t <em>watch</em> this key at runtime</td>
+    </tr>
+    <tr>
+      <td><code>Emulation.setEmulatedMedia</code></td>
+      <td>Changes <code>matchMedia</code></td>
+      <td>Teams doesn&rsquo;t listen to <code>prefers-color-scheme</code> changes</td>
+    </tr>
+    <tr>
+      <td><code>Emulation.setAutoDarkModeOverride</code></td>
+      <td>No visible effect</td>
+      <td>Teams doesn&rsquo;t use the browser&rsquo;s auto-dark feature</td>
+    </tr>
+    <tr>
+      <td>Edit <code>app_settings.json</code></td>
+      <td>Reverted on restart</td>
+      <td>Cloud sync overwrites local settings on startup</td>
+    </tr>
+    <tr>
+      <td>Edit <code>cloud_settings.json</code></td>
+      <td>Reverted on restart</td>
+      <td>File is downloaded fresh from Microsoft&rsquo;s servers</td>
+    </tr>
+    <tr>
+      <td><code>chrome.webview.postMessage</code> interception</td>
+      <td>Zero messages</td>
+      <td>Theme changes don&rsquo;t use the WebView2 message channel</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-cdp">
+  <div class="callout-title">The WebView2/Native Boundary</div>
+  <p>
+    Teams&rsquo; theme setting lives in the <em>native</em> (Electron/WebView2)
+    layer, not the web layer. CDP gives us full control of the web content, but the
+    native shell is largely opaque. We can read the DOM, execute JavaScript, intercept
+    network requests &mdash; but we can&rsquo;t call native APIs that the Electron/WebView2
+    host exposes only to its own privileged code.
+  </p>
+</div>
+
+<h3 id="settings-ui-automation">The Solution: Automate the Settings UI</h3>
+
+<p>
+  Since no API exists, the solution is to automate what a human would do: open
+  Settings, navigate to Appearance, change the theme dropdown, and navigate back.
+  CDP can click elements, wait for DOM mutations, and read values &mdash; everything
+  needed to drive the UI programmatically.
+</p>
+
+<pre><code class="language-javascript">// From injector.js — automating the Settings UI
+async function switchTeamsMode(Runtime, targetMode) {
+  const label = { dark: "Dark", light: "Light" }[targetMode];
+
+  // Helper: wait for element to appear, then click
+  async function waitAndClick(selector, timeout = 3000) {
+    const result = await Runtime.evaluate({
+      expression: `new Promise((resolve) =&gt; {
+        const el = document.querySelector('${selector}');
+        if (el &amp;&amp; el.getBoundingClientRect().width &gt; 0) {
+          el.click(); resolve('ok'); return;
+        }
+        const obs = new MutationObserver(() =&gt; {
+          const el = document.querySelector('${selector}');
+          if (el &amp;&amp; el.getBoundingClientRect().width &gt; 0) {
+            obs.disconnect(); el.click(); resolve('ok');
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+        setTimeout(() =&gt; { obs.disconnect(); resolve('timeout'); }, ${timeout});
+      })`,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    return result.result.value === "ok";
+  }
+
+  // Step 1: Open Settings menu
+  await waitAndClick('[data-tid="more-options-header"]');
+  await waitAndClick('[data-tid="settings-button-menu"]');
+
+  // Step 2: Click Appearance tab
+  await waitAndClick('[data-tid="appearance"]');
+
+  // Step 3: Open theme dropdown and select target
+  await waitAndClick('[data-tid="appearance-settings-theme-selector-dropdown"]');
+
+  // Step 4: Click the target option
+  await Runtime.evaluate({
+    expression: `new Promise((resolve) =&gt; {
+      const check = () =&gt; {
+        const opts = [...document.querySelectorAll('[role="option"]')];
+        const target = opts.find(o =&gt; o.textContent?.trim() === '${label}');
+        if (target) { target.click(); resolve('ok'); return true; }
+        return false;
+      };
+      if (check()) return;
+      const obs = new MutationObserver(() =&gt; { if (check()) obs.disconnect(); });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() =&gt; { obs.disconnect(); resolve('timeout'); }, 3000);
+    })`,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+
+  await new Promise(r =&gt; setTimeout(r, 500));
+
+  // Step 5: Navigate back twice (Appearance → General → main view)
+  for (let i = 0; i &lt; 2; i++) {
+    await Runtime.evaluate({
+      expression: `(() =&gt; {
+        const btn = document.querySelector('[data-tid="nav-back"]');
+        if (btn) { btn.click(); return 'back'; }
+        history.back(); return 'history-back';
+      })()`,
+      returnByValue: true,
+    });
+    await new Promise(r =&gt; setTimeout(r, 300));
+  }
+}</code></pre>
+
+<h3 id="mutation-observer">MutationObserver-Based Waiting</h3>
+
+<p>
+  The <code>waitAndClick()</code> helper uses a MutationObserver instead of polling
+  with <code>setTimeout</code>. When a Teams UI panel opens asynchronously, the
+  observer fires as soon as the target element appears in the DOM, then clicks it
+  and disconnects. This minimizes the delay between each step &mdash; the entire
+  Settings &rarr; Appearance &rarr; Dropdown &rarr; Select &rarr; Back &rarr; Back
+  sequence takes about 2&ndash;3 seconds.
+</p>
+
+<p>
+  The MutationObserver approach also handles the case where the element already
+  exists: it checks first, and only sets up the observer if the element isn&rsquo;t
+  found. A timeout (3 seconds) prevents hanging indefinitely if the UI structure
+  changes.
+</p>
+
+<h3 id="double-back">Navigate Back Twice</h3>
+
+<p>
+  Settings in Teams is a hierarchical view: General &rarr; Appearance is one level
+  deep. After changing the theme, you need to go back <em>twice</em> to return to
+  the original view (Appearance &rarr; General &rarr; chat/channel). The injector
+  clicks <code>[data-tid="nav-back"]</code> twice with a 300ms delay between clicks
+  to let the transition animation complete.
+</p>
+
+<p>
+  If the back button isn&rsquo;t found (possible if the Settings UI structure
+  changes), the fallback calls <code>history.back()</code> &mdash; the browser
+  navigation stack may or may not work depending on how Teams manages its
+  single-page app routing.
+</p>
+
+<h3 id="section6-summary">Summary</h3>
+
+<ul>
+  <li>v2 themes initially blocked video feeds by painting opaque backgrounds over video elements</li>
+  <li>Teams spawns multiple FluentProvider instances during calls &mdash; including a fixed backdrop at z:-1</li>
+  <li>The calling provider uses light-mode tokens even when Teams is in dark mode</li>
+  <li>The correct fix: override ALL FluentProviders, keep html/body transparent during calls</li>
+  <li>The <code>[class*="V2"]</code> pattern on <code>&lt;html&gt;</code> distinguishes calling windows from normal views</li>
+  <li>New CDP targets (pop-out windows) are discovered via a 3-second polling loop</li>
+  <li>Native theme detection works by temporarily removing the injected style and reading computed colors</li>
+  <li>Six different approaches to programmatic theme switching failed due to the WebView2/native boundary</li>
+  <li>The working solution automates the Settings UI via CDP clicks and MutationObserver-based waiting</li>
+  <li>The entire mode-switch sequence takes ~2&ndash;3 seconds with two back-navigations to return to the original view</li>
+</ul>
+
+<p>
+  The injector now handles chat, channels, and calls correctly &mdash; with automatic
+  mode detection and switching. The next section looks ahead: what&rsquo;s still
+  fragile, how to maintain themes across Teams updates, and where this project
+  could go.
+</p>
+
+<div class="section-nav">
+  <a href="/projects/theme-injector/tutorial/section05">&larr; Previous: Hardcoded Overrides</a>
+  <a href="/projects/theme-injector/tutorial/section07">Next: What&rsquo;s Next &rarr;</a>
+</div>

@@ -1,0 +1,453 @@
+---
+layout: themeinjector
+title: "Section 5: Hardcoded Overrides & Griffel Atomic Classes"
+permalink: /projects/theme-injector/tutorial/section05
+---
+
+<h2 id="hardcoded-overrides"><span class="section-number">5.</span> Hardcoded Overrides &amp; Griffel Atomic Classes</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  Why design tokens alone can&rsquo;t theme everything, and how stable DOM attributes
+  let us target the elements that Griffel&rsquo;s atomic CSS makes unreachable.
+</p>
+
+<p>
+  <span class="tag tag-design">Design</span>
+  <span class="tag tag-cdp">CDP</span>
+</p>
+
+<h3 id="tokens-not-enough">Why Token Overrides Aren&rsquo;t Enough</h3>
+
+<p>
+  After applying 400+ token overrides to the <code>.fui-FluentProvider</code> element,
+  you&rsquo;d expect every surface in Teams to reflect the new palette. Open Teams
+  with an injected theme, though, and you&rsquo;ll see white gaps bleeding through:
+  the title bar, the compose box background, the chat list sidebar. These elements
+  stubbornly ignore your tokens.
+</p>
+
+<p>
+  The culprit is <strong>Griffel</strong> &mdash; Microsoft&rsquo;s CSS-in-JS library
+  used by Fluent UI v9. Griffel generates <em>atomic CSS classes</em>: each class
+  sets exactly one property. Instead of a semantic class like
+  <code>.sidebar { background-color: var(--colorNeutralBackground2); }</code>, Griffel
+  generates something like:
+</p>
+
+<pre><code class="language-css">/* Griffel atomic class — sets background-color directly */
+.___1qrapf3 {
+  background-color: #ffffff;
+}</code></pre>
+
+<p>
+  The hardcoded <code>#ffffff</code> wins over any CSS custom property override on
+  a parent element. Griffel extracts the <em>resolved value</em> of the design token
+  at build time and bakes it into the atomic class. At runtime, changing the token
+  doesn&rsquo;t affect elements styled by these pre-resolved classes.
+</p>
+
+<div class="callout callout-design">
+  <div class="callout-title">CSS Specificity: Why Griffel Wins</div>
+  <p>
+    CSS custom properties (like <code>--colorNeutralBackground1</code>) on a parent
+    element are <em>inherited</em>, not directly applied. When a Griffel atomic class
+    sets <code>background-color: #ffffff</code> on an element, that declaration has
+    higher specificity than an inherited custom property. The only way to override it
+    is with a rule that targets the same element with equal or greater specificity,
+    or uses <code>!important</code>.
+  </p>
+</div>
+
+<h3 id="html-body-bleed">The html/body Background Bleed</h3>
+
+<p>
+  The most visible problem is the <code>&lt;html&gt;</code> and
+  <code>&lt;body&gt;</code> elements themselves. Teams runs inside a WebView2 control,
+  and the native window has its own background color. If the web content&rsquo;s
+  <code>&lt;body&gt;</code> has a white background, it shows through every gap between
+  Fluent UI components &mdash; margins, padding, scroll gutters. Token overrides
+  don&rsquo;t help because <code>&lt;html&gt;</code> and <code>&lt;body&gt;</code>
+  aren&rsquo;t inside <code>.fui-FluentProvider</code>.
+</p>
+
+<p>
+  The fix is straightforward: set the html/body background directly. But as
+  Section 6 will explain, this has to be conditional &mdash; during calls, the body
+  must be transparent to allow video feeds through.
+</p>
+
+<h3 id="selector-fragility">The Selector Fragility Problem</h3>
+
+<p>
+  If Griffel generates atomic classes like <code>.___1qrapf3</code> for the sidebar
+  background, could we just target that class in our CSS override?
+</p>
+
+<pre><code class="language-css">/* ❌ Don't do this — hash changes on every Teams update */
+.___1qrapf3 {
+  background-color: #21252b !important;
+}</code></pre>
+
+<p>
+  No. Griffel class names are <em>content hashes</em> of the style definition. Any
+  change to the component &mdash; even a minor prop adjustment or Fluent UI version
+  bump &mdash; produces a different hash. After the next Teams update, 
+  <code>.___1qrapf3</code> becomes <code>.___17x8g2a</code> and your override silently
+  breaks. The theme looks fine for two weeks, then spontaneously fails.
+</p>
+
+<p>
+  We need selectors that are <em>stable across updates</em>.
+</p>
+
+<h3 id="stable-selectors">The Solution: data-tid and data-testid Attributes</h3>
+
+<p>
+  The DOM exploration phase (<code>explore-dom.js</code>) revealed that Teams marks
+  its major UI regions with <code>data-tid</code> and <code>data-testid</code>
+  attributes. These exist for testing purposes &mdash; they let Teams&rsquo; own
+  automated tests find elements regardless of class name changes. They&rsquo;re
+  exactly what we need: stable identifiers that survive updates.
+</p>
+
+<pre><code class="language-javascript">// From explore-dom.js — discovering all data-tid elements
+const tidResult = await Runtime.evaluate({
+  expression: `
+    (() =&gt; {
+      const els = document.querySelectorAll('[data-tid]');
+      const results = [];
+      for (const el of els) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 &amp;&amp; rect.height === 0) continue;
+        results.push({
+          tid: el.getAttribute('data-tid'),
+          tag: el.tagName.toLowerCase(),
+          bounds: {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            w: Math.round(rect.width),
+            h: Math.round(rect.height)
+          },
+        });
+      }
+      return JSON.stringify(results);
+    })()
+  `,
+  returnByValue: true,
+});</code></pre>
+
+<h3 id="explore-dom">explore-dom.js: Live DOM Discovery</h3>
+
+<p>
+  The <code>explore-dom.js</code> tool connects to Teams via CDP and does a
+  comprehensive inventory of the live DOM. It maps the document tree to four levels
+  deep, captures every <code>data-tid</code> and <code>data-testid</code> attribute,
+  records bounding rectangles, ARIA labels, and roles. The output is a JSON file
+  that serves as a blueprint for writing stable selectors.
+</p>
+
+<p>
+  Running <code>explore-dom.js</code> on a typical Teams chat view produces results
+  like this:
+</p>
+
+<div class="diagram">
+data-tid elements found:
+  title-bar              1920&times;40   (0,0)      Title bar
+  app-bar-wrapper         68&times;980  (0,40)     App bar (left icons)
+  channel-list           300&times;980  (68,40)    Channel/chat list
+  entity-header         1552&times;48   (368,40)   Content header
+  message-pane-body     1552&times;884  (368,88)   Message area
+  ckeditor              1552&times;48   (368,932)  Compose box
+
+data-testid elements found:
+  simple-collab-rail     300&times;980  (68,40)    Chat list rail
+</div>
+
+<p>
+  Each of these provides a stable CSS selector. Instead of targeting the
+  unpredictable Griffel hash classes, we use:
+</p>
+
+<pre><code class="language-css">[data-tid="title-bar"]          { /* stable */ }
+[data-tid="app-bar-wrapper"]    { /* stable */ }
+[data-testid="simple-collab-rail"] { /* stable */ }
+[data-tid="entity-header"]      { /* stable */ }
+[data-tid="message-pane-body"]  { /* stable */ }
+[data-tid="ckeditor"]           { /* stable */ }</code></pre>
+
+<h3 id="key-selectors">Key Selectors Discovered</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>UI Region</th>
+      <th>Selector</th>
+      <th>Palette Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Title bar</td>
+      <td><code>[data-tid="title-bar"]</code></td>
+      <td>titleBar (special)</td>
+    </tr>
+    <tr>
+      <td>App bar (left icon rail)</td>
+      <td><code>[data-tid="app-bar-wrapper"]</code></td>
+      <td>bg.base</td>
+    </tr>
+    <tr>
+      <td>Chat/channel list</td>
+      <td><code>[data-testid="simple-collab-rail"]</code></td>
+      <td>bg.base</td>
+    </tr>
+    <tr>
+      <td>Content header</td>
+      <td><code>[data-tid="entity-header"]</code></td>
+      <td>bg.elevated</td>
+    </tr>
+    <tr>
+      <td>Message area</td>
+      <td><code>[data-tid="message-pane-body"]</code></td>
+      <td>bg.elevated</td>
+    </tr>
+    <tr>
+      <td>Compose box</td>
+      <td><code>[data-tid="ckeditor"]</code></td>
+      <td>bg.elevated</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="build-css">buildCSS(): Generating Tokens + Targeted Overrides</h3>
+
+<p>
+  The <code>buildCSS()</code> function in <code>port-theme.js</code> generates the
+  complete theme CSS file. It produces two sections: the token map (applied to
+  <code>.fui-FluentProvider</code>) and the hardcoded overrides (targeting specific
+  elements by <code>data-tid</code>).
+</p>
+
+<pre><code class="language-javascript">// From port-theme.js — the CSS generator
+function buildCSS(palette, tokenMap, observedTokens) {
+  const P = palette;
+  const lines = [];
+
+  // ── Section 1: Token overrides on FluentProvider ──
+  lines.push(".fui-FluentProvider {");
+  for (const [token, value] of Object.entries(tokenMap)) {
+    lines.push(`  ${token}: ${value} !important;`);
+  }
+  lines.push("}");
+
+  // ── Section 2: Hardcoded overrides ──
+
+  // html/body background (conditional for calls)
+  lines.push(`html:not([class*="V2"]) {`);
+  lines.push(`  background-color: ${P.bg.base} !important;`);
+  lines.push(`}`);
+
+  // Title bar
+  lines.push(`.fui-FluentProvider [data-tid="title-bar"] {`);
+  lines.push(`  background-color: var(--titleBar) !important;`);
+  lines.push(`}`);
+
+  // App bar
+  lines.push(`.fui-FluentProvider [data-tid="app-bar-wrapper"] {`);
+  lines.push(`  background-color: ${P.bg.base} !important;`);
+  lines.push(`}`);
+
+  // Chat list
+  lines.push(`.fui-FluentProvider [data-testid="simple-collab-rail"] {`);
+  lines.push(`  background-color: ${P.bg.base} !important;`);
+  lines.push(`}`);
+
+  // ... more targeted overrides
+}</code></pre>
+
+<h3 id="wildcard-propagation">The .fui-FluentProvider * Wildcard</h3>
+
+<p>
+  Even with targeted selectors, some Griffel-styled elements sit deep in the
+  component tree and resist overrides. The nuclear option is a descendant wildcard
+  that re-propagates key token values to <em>every</em> child element:
+</p>
+
+<pre><code class="language-css">/* Token propagation for Griffel atomic overrides */
+.fui-FluentProvider * {
+  --colorNeutralBackground1: #21252b;
+  --colorNeutralBackground2: #1b1f23;
+  --colorNeutralBackground3: #282c34;
+}</code></pre>
+
+<p>
+  This is a blunt instrument but effective. By setting the custom property directly
+  on every element (not just the provider), any Griffel class that uses
+  <code>var(--colorNeutralBackground1)</code> will pick up the override. The
+  performance impact is negligible &mdash; CSS custom properties are inheritable by
+  default, so the browser already tracks them through the tree. Setting them
+  explicitly on <code>*</code> just ensures that inline-style-like Griffel
+  declarations can&rsquo;t escape.
+</p>
+
+<div class="callout callout-warn">
+  <div class="callout-title">The Specificity Arms Race</div>
+  <p>
+    The wildcard approach works today because Griffel uses
+    <code>var(--tokenName)</code> in most of its atomic classes. If a future Griffel
+    version resolves tokens at build time (replacing
+    <code>var(--colorNeutralBackground1)</code> with <code>#ffffff</code> directly),
+    the wildcard trick would stop working. We&rsquo;d need even more targeted
+    overrides. This is the fundamental fragility of overriding a CSS-in-JS system
+    from the outside.
+  </p>
+</div>
+
+<h3 id="chat-messages">Chat Message Styling</h3>
+
+<p>
+  Chat messages are one of the most visually prominent elements. Fluent UI uses
+  two distinct component classes: <code>.fui-ChatMessage__body</code> for messages
+  from other people, and <code>.fui-ChatMyMessage__body</code> for your own messages.
+  These aren&rsquo;t <code>data-tid</code> elements &mdash; they&rsquo;re Fluent UI
+  component class names, which are more stable than Griffel hashes because they&rsquo;re
+  public API rather than generated internals.
+</p>
+
+<pre><code class="language-css">/* Chat messages — other people */
+.fui-FluentProvider .fui-ChatMessage__body {
+  background-color: #2c313a !important;
+}
+
+/* Chat messages — my messages (tinted with brand color) */
+.fui-FluentProvider .fui-ChatMyMessage__body {
+  background-color: #2b3140 !important;
+}</code></pre>
+
+<p>
+  The distinction matters: &ldquo;my message&rdquo; backgrounds typically get a subtle
+  brand tint to visually distinguish them. The palette&rsquo;s <code>myMessageBg</code>
+  role captures this &mdash; a dark blue-tinted variant of the base background in
+  Atom One Dark, for example.
+</p>
+
+<h3 id="counter-badges">Counter Badges</h3>
+
+<p>
+  Teams shows unread message counts as small colored badges on channel and chat
+  entries. These use the <code>.fui-CounterBadge</code> component class:
+</p>
+
+<pre><code class="language-css">/* Notification badges — custom brand color */
+.fui-FluentProvider .fui-CounterBadge {
+  background-color: #e5c07b !important;  /* warning.fg */
+  color: #282c34 !important;             /* bg.elevated */
+}</code></pre>
+
+<p>
+  Using the warning color (gold/yellow) for badges makes them stand out against
+  dark backgrounds without the aggressive red that Teams uses by default. This is
+  an opinionated design choice &mdash; each theme can customize the badge palette
+  role to whatever feels right.
+</p>
+
+<h3 id="compose-placeholder">Compose Box: Placeholder Text</h3>
+
+<p>
+  The compose box (<code>[data-tid="ckeditor"]</code>) uses a CKEditor instance.
+  Its placeholder text (&ldquo;Type a new message&rdquo;) is set via a
+  <code>::before</code> pseudo-element on a <code>[data-placeholder]</code> attribute
+  or a <code>.ck-placeholder</code> class. Both need to be targeted:
+</p>
+
+<pre><code class="language-css">/* Compose box placeholder text */
+.fui-FluentProvider [data-tid="ckeditor"] [data-placeholder]::before,
+.fui-FluentProvider [data-tid="ckeditor"] .ck-placeholder::before {
+  color: #636d83 !important;  /* fg.subtle */
+}</code></pre>
+
+<p>
+  Without this override, the placeholder remains an unreadable near-white text on
+  a light background &mdash; or worse, inherits a dark color from the token override
+  that doesn&rsquo;t contrast with the compose box&rsquo;s background.
+</p>
+
+<h3 id="selector-stability">Selector Stability Hierarchy</h3>
+
+<p>
+  Not all selectors are equally fragile. Here&rsquo;s the observed stability ranking:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Selector Type</th>
+      <th>Stability</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CSS custom property names</td>
+      <td>&#9733;&#9733;&#9733;&#9733;&#9733;</td>
+      <td><code>--colorNeutralBackground1</code></td>
+    </tr>
+    <tr>
+      <td>Fluent component classes</td>
+      <td>&#9733;&#9733;&#9733;&#9733;</td>
+      <td><code>.fui-ChatMessage__body</code></td>
+    </tr>
+    <tr>
+      <td><code>data-tid</code> attributes</td>
+      <td>&#9733;&#9733;&#9733;&#9733;</td>
+      <td><code>[data-tid="title-bar"]</code></td>
+    </tr>
+    <tr>
+      <td><code>data-testid</code> attributes</td>
+      <td>&#9733;&#9733;&#9733;</td>
+      <td><code>[data-testid="simple-collab-rail"]</code></td>
+    </tr>
+    <tr>
+      <td>ARIA roles/labels</td>
+      <td>&#9733;&#9733;</td>
+      <td><code>[role="navigation"]</code></td>
+    </tr>
+    <tr>
+      <td>Griffel hash classes</td>
+      <td>&#9733;</td>
+      <td><code>.___1qrapf3</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  The theme generator uses the highest-stability selectors available for each
+  target element. Token overrides handle the vast majority of the UI; hardcoded
+  selectors are the fallback for elements where Griffel bakes in resolved values.
+</p>
+
+<h3 id="section5-summary">Summary</h3>
+
+<ul>
+  <li>Griffel CSS-in-JS generates atomic classes that set background-color directly, bypassing token overrides</li>
+  <li>html/body backgrounds bleed through transparent gaps between Fluent UI components</li>
+  <li>Griffel hash class names (<code>.___1qrapf3</code>) change on every Teams update &mdash; unusable as selectors</li>
+  <li><code>explore-dom.js</code> discovers stable <code>data-tid</code> and <code>data-testid</code> attributes</li>
+  <li>Key regions (title bar, app bar, chat list, entity header, message pane, compose box) all have stable identifiers</li>
+  <li><code>buildCSS()</code> generates both token overrides and targeted hardcoded rules</li>
+  <li>The <code>.fui-FluentProvider *</code> wildcard re-propagates tokens to all children for Griffel resilience</li>
+  <li>Chat messages use Fluent component classes (<code>.fui-ChatMessage__body</code>) which are more stable than hashes</li>
+  <li>Counter badges and compose box placeholders need targeted overrides for correct theming</li>
+</ul>
+
+<p>
+  Tokens handle the system; hardcoded overrides handle the exceptions. Together they
+  produce a fully themed Teams UI &mdash; until you join a call. The next section
+  covers the calling screen bug and the discovery that Teams has multiple
+  FluentProviders with different token sets.
+</p>
+
+<div class="section-nav">
+  <a href="/projects/theme-injector/tutorial/section04">&larr; Previous: Porting Themes</a>
+  <a href="/projects/theme-injector/tutorial/section06">Next: Video Feeds &amp; Calling &rarr;</a>
+</div>

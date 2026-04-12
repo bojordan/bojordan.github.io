@@ -1,0 +1,111 @@
+---
+layout: themeinjector
+title: "Theming Microsoft Teams from the Outside"
+permalink: /projects/theme-injector/tutorial/
+---
+
+        <div class="hero">
+            <h1>Theming Microsoft Teams<br>from the Outside</h1>
+            <p class="subtitle">
+                An observation-first approach to runtime CSS injection via Chrome DevTools Protocol &mdash;
+                extracting Fluent UI tokens, analyzing the design system, and building a theme engine
+                that ports any VS Code theme to Teams.
+            </p>
+            <div class="tech-stack">
+                <span>Chrome DevTools Protocol</span>
+                <span>Fluent UI v9 Tokens</span>
+                <span>CSS Custom Properties</span>
+                <span>HSL Color Science</span>
+                <span>WebView2</span>
+                <span>Node.js</span>
+                <span>DOM Analysis</span>
+            </div>
+        </div>
+
+        <div class="arc-label">Foundation</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/theme-injector/tutorial/section00">
+                    <span class="section-num">0</span>
+                    <div class="section-info">
+                        <div class="title">The Problem &amp; the Exploit <span class="tag tag-cdp">CDP</span></div>
+                        <div class="desc">Why Teams can&rsquo;t be themed, how WebView2 changes that, and the CDP debug port setup</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/theme-injector/tutorial/section01">
+                    <span class="section-num">1</span>
+                    <div class="section-info">
+                        <div class="title">Observation &mdash; Extracting the Color System <span class="tag tag-design">Design</span></div>
+                        <div class="desc">Connecting via CDP, extracting 400+ Fluent UI tokens, sampling UI regions, detecting theme mode</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 1 &mdash; Understanding the Design System</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/theme-injector/tutorial/section02">
+                    <span class="section-num">2</span>
+                    <div class="section-info">
+                        <div class="title">Analysis &mdash; Surface Hierarchy &amp; Token Anatomy <span class="tag tag-design">Design</span></div>
+                        <div class="desc">Background layers, foreground ramps, interaction states, contrast verification, brand system</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/theme-injector/tutorial/section03">
+                    <span class="section-num">3</span>
+                    <div class="section-info">
+                        <div class="title">The Dimming Engine &mdash; Polarity-Aware Color Math <span class="tag tag-design">Design</span> <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">HSL transforms, foreground polarity flip, WCAG contrast enforcement, seven dimming profiles</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 2 &mdash; The Theme Porting Engine</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/theme-injector/tutorial/section04">
+                    <span class="section-num">4</span>
+                    <div class="section-info">
+                        <div class="title">Porting VS Code Themes &mdash; Palette to Tokens <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">Structural mapping, 25 semantic roles, automatic interaction state generation, JSONC parsing</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/theme-injector/tutorial/section05">
+                    <span class="section-num">5</span>
+                    <div class="section-info">
+                        <div class="title">Hardcoded Overrides &amp; Griffel Atomic Classes <span class="tag tag-cdp">CDP</span> <span class="tag tag-design">Design</span></div>
+                        <div class="desc">Why tokens alone aren&rsquo;t enough, DOM exploration, the data-tid selector strategy</div>
+                    </div>
+                </a>
+            </li>
+        </ul>
+
+        <div class="arc-label">Arc 3 &mdash; Real-World Challenges</div>
+        <ul class="section-list">
+            <li>
+                <a href="/projects/theme-injector/tutorial/section06">
+                    <span class="section-num">6</span>
+                    <div class="section-info">
+                        <div class="title">Video Feeds, Calling Screens &amp; Native Theme Control <span class="tag tag-cdp">CDP</span> <span class="tag tag-arch">Arch</span></div>
+                        <div class="desc">Multiple FluentProviders, transparent html/body, native IPC, Settings UI automation</div>
+                    </div>
+                </a>
+            </li>
+            <li>
+                <a href="/projects/theme-injector/tutorial/section07">
+                    <span class="section-num">7</span>
+                    <div class="section-info">
+                        <div class="title">Making It Better &mdash; Fragility, Automation &amp; What&rsquo;s Next</div>
+                        <div class="desc">Reducing fragility, improving the porting pipeline, and ideas for the future</div>
+                    </div>
+                </a>
+            </li>
+        </ul>

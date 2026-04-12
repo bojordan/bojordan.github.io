@@ -1,0 +1,499 @@
+---
+layout: themeinjector
+title: "Section 7: Making It Better — Fragility, Automation & What's Next"
+permalink: /projects/theme-injector/tutorial/section07
+---
+
+<h2 id="whats-next"><span class="section-number">7.</span> Making It Better &mdash; Fragility, Automation &amp; What&rsquo;s Next</h2>
+<p class="subtitle" style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem;">
+  Understanding what can break, building self-healing mechanisms,
+  and exploring where this reverse-engineering approach leads.
+</p>
+
+<p>
+  <span class="tag tag-arch">Arch</span>
+  <span class="tag tag-design">Design</span>
+</p>
+
+<h3 id="fragility-points">Current Fragility Points</h3>
+
+<p>
+  Theme injection into a closed-source application is inherently fragile. We&rsquo;re
+  overriding a system designed to <em>not</em> be overridden. Every Teams update is
+  a potential breaking change. Let&rsquo;s be honest about what can break and how
+  likely each failure mode is.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Fragility Point</th>
+      <th>Likelihood</th>
+      <th>Impact</th>
+      <th>Detection</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>data-tid</code> selectors renamed or removed</td>
+      <td>Low&ndash;Medium</td>
+      <td>Specific UI regions lose theming (e.g., title bar reverts to default)</td>
+      <td>Visual &mdash; affected elements are obvious</td>
+    </tr>
+    <tr>
+      <td>FluentProvider token names changed</td>
+      <td>Low</td>
+      <td>Entire theme stops working (wrong colors everywhere)</td>
+      <td>Immediately visible</td>
+    </tr>
+    <tr>
+      <td>Calling screen structure rearchitected</td>
+      <td>Medium</td>
+      <td>Video feed bug returns or calling UI unthemed</td>
+      <td>Requires joining a call to verify</td>
+    </tr>
+    <tr>
+      <td>Settings UI navigation paths changed</td>
+      <td>Medium</td>
+      <td>Auto mode-switching fails; themes still work, just can&rsquo;t auto-switch</td>
+      <td>Console warning from <code>switchTeamsMode()</code></td>
+    </tr>
+    <tr>
+      <td>Griffel resolves tokens at build time</td>
+      <td>Low</td>
+      <td>Token overrides stop affecting Griffel-styled elements</td>
+      <td>Subtle &mdash; individual components lose theming</td>
+    </tr>
+    <tr>
+      <td>CDP debug port disabled by Microsoft</td>
+      <td>Low</td>
+      <td>Total failure &mdash; no connection possible</td>
+      <td>Immediate &mdash; injector can&rsquo;t connect</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  The most important insight: token names are the <em>most stable</em> part of this
+  system. Fluent UI v9&rsquo;s design tokens are essentially a public API &mdash;
+  documented, versioned, and used across multiple Microsoft products. Renaming
+  <code>--colorNeutralBackground1</code> would break every Fluent UI consumer, not
+  just our theme injector. This makes the core token override approach relatively
+  durable.
+</p>
+
+<p>
+  The fragile parts are the <em>hardcoded overrides</em> &mdash; the targeted
+  selectors for specific elements (Section 5) and the calling screen workarounds
+  (Section 6). These depend on implementation details that Teams can change without
+  notice.
+</p>
+
+<h3 id="self-healing">Self-Healing Mechanisms</h3>
+
+<p>
+  The observation and analysis tools from Sections 1 and 2 aren&rsquo;t just for
+  initial development &mdash; they&rsquo;re the maintenance strategy. When a Teams
+  update breaks something, the tools can diagnose what changed:
+</p>
+
+<h4>explore-dom.js: Selector Health Check</h4>
+
+<p>
+  After a Teams update, run <code>explore-dom.js</code> to re-inventory all
+  <code>data-tid</code> and <code>data-testid</code> elements. Compare the output
+  against the previous run. Did <code>data-tid="title-bar"</code> disappear? Was it
+  renamed to <code>data-tid="titlebar"</code>? The JSON diff tells you exactly what
+  changed and which CSS selectors need updating.
+</p>
+
+<pre><code class="language-javascript">// Quick diff between two explore-dom.js outputs
+const fs = require("fs");
+const prev = JSON.parse(fs.readFileSync("output/dom-exploration-old.json"));
+const curr = JSON.parse(fs.readFileSync("output/dom-exploration.json"));
+
+const prevTids = new Set(prev.tids.map(t =&gt; t.tid));
+const currTids = new Set(curr.tids.map(t =&gt; t.tid));
+
+const removed = [...prevTids].filter(t =&gt; !currTids.has(t));
+const added   = [...currTids].filter(t =&gt; !prevTids.has(t));
+
+console.log("Removed:", removed);  // selectors that broke
+console.log("Added:",   added);    // potential replacements</code></pre>
+
+<h4>observe.js: Token Structure Monitoring</h4>
+
+<p>
+  Similarly, <code>observe.js</code> can re-extract all tokens from a new Teams
+  version. If token names changed, the diff between runs reveals it immediately.
+  If new tokens appeared, they might need to be added to the <code>buildTokenMap()</code>
+  function. If tokens disappeared, their mappings can be removed.
+</p>
+
+<h4>observe-calling.js: Calling Screen Validation</h4>
+
+<p>
+  The calling observation script can be re-run after updates to verify that the
+  FluentProvider structure hasn&rsquo;t changed. If the
+  <code>data-tid="calling-screen-background"</code> element moves, gains a new
+  identifier, or uses a different positioning strategy, the diff will show it.
+</p>
+
+<div class="callout callout-tip">
+  <div class="callout-title">Build a Habit, Not a Tool</div>
+  <p>
+    The most effective maintenance strategy is simply running the observation
+    pipeline after each major Teams update. It takes ~30 seconds and produces a
+    complete picture of what changed. The alternative &mdash; waiting until something
+    visually breaks and then debugging &mdash; is far more time-consuming.
+  </p>
+</div>
+
+<h3 id="resilient-themes">Token-Only vs. Hardcoded Themes</h3>
+
+<p>
+  The dimmed themes from Section 3 are the <em>most resilient</em> themes in the
+  system. They only override tokens on <code>.fui-FluentProvider</code> &mdash; no
+  hardcoded selectors, no <code>data-tid</code> targeting, no wildcard propagation.
+  If a token name changes, every dimmed theme breaks identically and the fix is a
+  single rename in the token map.
+</p>
+
+<p>
+  Ported VS Code themes (Section 4) are moderately resilient. They use tokens for
+  the vast majority of the UI but add hardcoded overrides for elements where Griffel
+  bypasses tokens. If a <code>data-tid</code> changes, the specific UI region loses
+  theming but the rest still works.
+</p>
+
+<p>
+  This creates a clear strategy for minimizing fragility:
+</p>
+
+<ol>
+  <li><strong>Maximize token coverage.</strong> Every element themed via tokens is
+    one fewer hardcoded override to maintain.</li>
+  <li><strong>Minimize hardcoded selectors.</strong> Only add them when tokens
+    provably don&rsquo;t work for a specific element.</li>
+  <li><strong>Use the most stable selector available.</strong> Prefer
+    <code>data-tid</code> over Fluent component classes, and never use Griffel hashes.</li>
+  <li><strong>Isolate hardcoded overrides.</strong> Keep them in a clearly marked
+    section of the CSS so they&rsquo;re easy to audit after updates.</li>
+</ol>
+
+<h3 id="easier-porting">Making Theme Porting Easier</h3>
+
+<p>
+  The 25-role palette system means adding a new theme is a matter of defining ~30
+  colors. But even that could be simpler:
+</p>
+
+<h4>Auto-Extraction Beyond VS Code</h4>
+
+<p>
+  <code>port-all.js</code> currently reads VS Code theme JSON files. The same
+  approach could be extended to other theme formats:
+</p>
+
+<ul>
+  <li><strong>Slack themes</strong> &mdash; Slack uses a simpler 8-color format.
+    Map sidebar background &rarr; <code>bg.base</code>, text &rarr; <code>fg.primary</code>,
+    accent &rarr; <code>brand.primary</code>, etc.</li>
+  <li><strong>Firefox/Chrome themes</strong> &mdash; Browser themes define toolbar,
+    tab, and sidebar colors. These map cleanly to our surface hierarchy.</li>
+  <li><strong>Terminal themes (iTerm2, Windows Terminal)</strong> &mdash; These
+    define 16 ANSI colors plus a background. The ANSI palette provides natural
+    accent colors (red = danger, green = success, yellow = warning).</li>
+  <li><strong>Base16 themes</strong> &mdash; The Base16 standard defines exactly
+    16 colors in a structured format. A Base16 &rarr; palette converter would be
+    straightforward.</li>
+</ul>
+
+<h4>From Palette to Theme in One Command</h4>
+
+<p>
+  Currently, defining a manual palette requires writing a JavaScript object in
+  <code>port-theme.js</code>. A JSON-based palette format would let users define
+  themes without touching the codebase:
+</p>
+
+<pre><code class="language-json">{
+  "label": "My Custom Theme",
+  "bg": {
+    "deep": "#0d1117",
+    "base": "#161b22",
+    "elevated": "#1c2128",
+    "subtle": "#21262d",
+    "wash": "#30363d"
+  },
+  "fg": {
+    "emphasis": "#f0f6fc",
+    "primary": "#c9d1d9",
+    "muted": "#8b949e",
+    "subtle": "#6e7681",
+    "faint": "#484f58"
+  },
+  "brand": {
+    "primary": "#1f6feb",
+    "fg": "#58a6ff"
+  }
+}</code></pre>
+
+<p>
+  The porter engine would read this JSON, fill in missing roles with sensible
+  defaults (e.g., generate <code>brand.hover</code> from <code>brand.primary</code>
+  + lightening), and produce a complete theme CSS. Adding a theme becomes editing
+  a JSON file and running a command.
+</p>
+
+<h3 id="future-resilience">Making Themes Less Fragile</h3>
+
+<h4>CSS Cascade Layers</h4>
+
+<p>
+  Modern CSS supports <code>@layer</code> declarations that control specificity
+  ordering. If Griffel&rsquo;s atomic classes were in a lower cascade layer and our
+  overrides were in a higher one, we wouldn&rsquo;t need <code>!important</code>
+  everywhere:
+</p>
+
+<pre><code class="language-css">/* Hypothetical — if Teams supported cascade layers */
+@layer griffel, theme-override;
+
+@layer theme-override {
+  .fui-FluentProvider {
+    --colorNeutralBackground1: #21252b;
+    /* No !important needed — layer wins */
+  }
+}</code></pre>
+
+<p>
+  Unfortunately, we can&rsquo;t control the layer that Griffel&rsquo;s classes are
+  injected into. But if Fluent UI v9 ever adds cascade layer support, it would
+  dramatically simplify third-party theming.
+</p>
+
+<h4>CSS Containment</h4>
+
+<p>
+  CSS containment (<code>contain: style</code>) limits the scope of CSS custom
+  properties, preventing them from leaking out of a subtree. This is the opposite
+  of what we want &mdash; we <em>need</em> our token overrides to leak into every
+  subtree. But understanding containment helps diagnose cases where tokens
+  mysteriously don&rsquo;t apply: if a component sets <code>contain: style</code>,
+  our inherited custom properties won&rsquo;t reach its children.
+</p>
+
+<h4>A Theme Health Check Tool</h4>
+
+<p>
+  A dedicated health check tool could automate post-update validation:
+</p>
+
+<pre><code class="language-javascript">// Concept: theme health check
+async function checkThemeHealth(Runtime) {
+  const checks = [
+    // Verify key selectors still exist
+    { selector: '[data-tid="title-bar"]', name: 'Title bar' },
+    { selector: '[data-tid="app-bar-wrapper"]', name: 'App bar' },
+    { selector: '[data-tid="message-pane-body"]', name: 'Message pane' },
+    { selector: '[data-tid="ckeditor"]', name: 'Compose box' },
+  ];
+
+  for (const check of checks) {
+    const exists = await Runtime.evaluate({
+      expression: `!!document.querySelector('${check.selector}')`,
+      returnByValue: true,
+    });
+    console.log(`  ${exists.result.value ? '✓' : '✗'} ${check.name}`);
+  }
+
+  // Verify token overrides are taking effect
+  const bg = await Runtime.evaluate({
+    expression: `getComputedStyle(
+      document.querySelector('.fui-FluentProvider')
+    ).getPropertyValue('--colorNeutralBackground1').trim()`,
+    returnByValue: true,
+  });
+  console.log(`  Token check: --colorNeutralBackground1 = ${bg.result.value}`);
+}</code></pre>
+
+<h3 id="future-ideas">Future Directions</h3>
+
+<h4>Theme Sharing Format</h4>
+
+<p>
+  A standard JSON palette format (as described above) would enable a theme
+  marketplace &mdash; a repository of community-created palettes that anyone can
+  download, preview, and inject. The porter engine converts palette JSON to CSS
+  automatically; sharing themes becomes sharing a 30-line JSON file.
+</p>
+
+<h4>Live Theme Preview</h4>
+
+<p>
+  The injector already supports hot-reloading: edit the CSS file and it re-injects
+  within 300ms. Extending this to a &ldquo;preview mode&rdquo; &mdash; inject
+  temporarily, let the user evaluate, and revert if they decline &mdash; would make
+  theme selection more interactive.
+</p>
+
+<pre><code class="language-javascript">// Concept: temporary theme preview
+async function previewTheme(themePath, durationMs = 10000) {
+  const css = fs.readFileSync(themePath, "utf-8");
+  const expr = buildInjectionExpression(css);
+  await injectIntoAll(expr);
+
+  console.log(`Previewing ${path.basename(themePath)}...`);
+  console.log(`Press Enter to keep, or wait ${durationMs/1000}s to revert.`);
+
+  const kept = await Promise.race([
+    new Promise(r =&gt; process.stdin.once("data", () =&gt; r(true))),
+    new Promise(r =&gt; setTimeout(() =&gt; r(false), durationMs)),
+  ]);
+
+  if (!kept) {
+    // Revert to previous theme
+    await injectIntoAll(previousExpression);
+    console.log("Reverted.");
+  }
+}</code></pre>
+
+<h4>Outlook Theming</h4>
+
+<p>
+  The v1 system already supported Outlook (new Outlook for Windows uses the same
+  WebView2 + Fluent UI architecture as Teams). Porting v2&rsquo;s improved engine
+  to Outlook would extend the same approach to a second Microsoft 365 app. The token
+  names are largely shared between Teams and Outlook, so the palette system would
+  work with minimal adaptation.
+</p>
+
+<h4>Browser Extension</h4>
+
+<p>
+  Teams for web (teams.microsoft.com) runs in a regular browser tab. A browser
+  extension could inject the same CSS without needing CDP. The extension would use
+  the standard <code>chrome.tabs.insertCSS</code> API or a content script. The
+  same theme CSS files work unchanged &mdash; they don&rsquo;t depend on the
+  injection mechanism.
+</p>
+
+<h4>Contributing Themes</h4>
+
+<p>
+  With the palette format standardized and auto-extraction from VS Code working,
+  the barrier to contributing a theme is low: install a VS Code theme, run
+  <code>port-all.js</code>, review the output, commit. Community contributions
+  could rapidly expand the theme library beyond what a single developer can
+  manually curate.
+</p>
+
+<h3 id="lessons-learned">Lessons Learned</h3>
+
+<h4>Observe Before You Hack</h4>
+
+<p>
+  The single most valuable principle in this project: <em>understand the system
+  before you override it</em>. v1 guessed at token values and fought the design
+  system. v2 observed every token, analyzed the patterns, and worked <em>with</em>
+  the structure. The difference in results &mdash; and in long-term maintainability
+  &mdash; is dramatic.
+</p>
+
+<p>
+  This applies beyond theming. Any time you&rsquo;re extending, modifying, or
+  working around a system you don&rsquo;t control, instrument first. Read every
+  computed style, log every event, map every element. The upfront investment in
+  observation saves multiples in debugging and guessing.
+</p>
+
+<h4>CDP Is More Powerful Than Most People Realize</h4>
+
+<p>
+  The Chrome DevTools Protocol gives you everything the Chrome DevTools UI does
+  and more: DOM inspection, JavaScript evaluation, network interception, screenshots,
+  emulation, runtime profiling. Most developers interact with CDP indirectly through
+  DevTools or Puppeteer. Working with the protocol directly revealed capabilities
+  that aren&rsquo;t exposed in the standard DevTools UI &mdash; like evaluating
+  expressions in specific execution contexts or intercepting specific CDP domains.
+</p>
+
+<h4>Fluent UI v9&rsquo;s Token System Is Well-Designed</h4>
+
+<p>
+  Despite fighting it throughout this project, the Fluent UI token system
+  deserves praise. The layered background hierarchy, the consistent
+  foreground ramp, the interaction state pattern &mdash; these are thoughtfully
+  designed. The 25-role palette system only works <em>because</em> Fluent UI&rsquo;s
+  token structure is coherent and systematic. A chaotic token system would require
+  chaotic overrides.
+</p>
+
+<h4>The WebView2/Native Boundary Is the Hardest Part</h4>
+
+<p>
+  Every challenge in this project that couldn&rsquo;t be solved elegantly was at
+  the boundary between the web layer (where CDP works) and the native layer
+  (where it doesn&rsquo;t). Theme switching required UI automation because the
+  setting lives in native storage. Video feed transparency required understanding
+  how the WebView2 compositor layers web content and native windows. The CDP debug
+  port itself is a configuration that the native shell controls.
+</p>
+
+<p>
+  If you&rsquo;re working with WebView2 or Electron apps, expect the native
+  boundary to be the source of your most difficult bugs.
+</p>
+
+<h3 id="congratulations">Congratulations</h3>
+
+<p>
+  You&rsquo;ve worked through the entire Theme Injector tutorial &mdash; from
+  connecting to Teams via CDP, through observing and analyzing the Fluent UI token
+  system, to generating themes from a 25-color palette and handling edge cases like
+  video feeds and native theme switching.
+</p>
+
+<p>
+  Here&rsquo;s what you&rsquo;ve learned:
+</p>
+
+<ul>
+  <li><strong>CDP fundamentals</strong> &mdash; Connecting to applications via
+    debugging ports, evaluating JavaScript remotely, intercepting DOM events</li>
+  <li><strong>Design system reverse-engineering</strong> &mdash; Extracting tokens,
+    analyzing layer hierarchies, understanding interaction state patterns</li>
+  <li><strong>Color science</strong> &mdash; HSL transforms, polarity-aware dimming,
+    WCAG contrast verification, relative luminance calculations</li>
+  <li><strong>CSS-in-JS overrides</strong> &mdash; Working around Griffel&rsquo;s
+    atomic classes, using stable selectors, cascade specificity strategies</li>
+  <li><strong>Theme engineering</strong> &mdash; Palette definitions, structural
+    mapping, auto-extraction from VS Code themes, JSONC parsing</li>
+  <li><strong>WebView2 architecture</strong> &mdash; Multiple FluentProvider
+    instances, calling screen workarounds, native/web boundary challenges</li>
+</ul>
+
+<p>
+  The techniques here extend far beyond Teams theming. The observation &rarr; analysis
+  &rarr; systematic override pipeline applies to any application you want to customize
+  from the outside. The palette &rarr; token mapping pattern applies to any design
+  system with structured tokens. And CDP&rsquo;s capabilities go far beyond what
+  was covered here &mdash; network interception, performance profiling, accessibility
+  auditing, and more.
+</p>
+
+<div class="callout callout-tip">
+  <div class="callout-title">Go Build Something</div>
+  <p>
+    The best way to internalize these concepts is to apply them. Pick an Electron
+    or WebView2 application you use daily. Connect to it via CDP. Observe its design
+    tokens. Analyze the patterns. Build something. The worst that can happen is you
+    learn how the application works &mdash; and that knowledge is valuable regardless
+    of whether your theme or extension ships.
+  </p>
+</div>
+
+<div class="section-nav">
+  <a href="/projects/theme-injector/tutorial/section06">&larr; Previous: Video Feeds &amp; Calling</a>
+</div>
