@@ -1,4 +1,4 @@
-by---
+---
 layout: post
 title: "Theming Microsoft Teams from the Outside - An Observation-First Tutorial"
 ---
