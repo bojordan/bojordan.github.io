@@ -1,6 +1,6 @@
 by---
 layout: post
-title: "Theming Microsoft Teams from the Outside — An Observation-First Tutorial"
+title: "Theming Microsoft Teams from the Outside - An Observation-First Tutorial"
 ---
 
 Microsoft Teams supports exactly three built-in themes: Light, Dark, and High Contrast. There&rsquo;s no custom theme API. But new Teams runs on WebView2 (Chromium), which exposes the Chrome DevTools Protocol &mdash; and that means an external Node.js process can connect via CDP, inspect the running UI, and inject CSS that overrides Fluent UI&rsquo;s 400+ design tokens.
